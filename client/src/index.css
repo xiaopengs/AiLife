@@ -4,8 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Noto Sans SC", sans-serif;
-  --font-serif: "Noto Serif SC", serif;
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-serif: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -33,8 +33,8 @@
   --card-foreground: oklch(0.255 0.016 42);
   --popover: oklch(0.995 0.004 75);
   --popover-foreground: oklch(0.255 0.016 42);
-  --primary: oklch(0.51 0.076 34);
-  --primary-foreground: oklch(0.985 0.004 75);
+  --primary: oklch(0.62 0.201 31);
+  --primary-foreground: oklch(0.99 0.004 75);
   --secondary: oklch(0.942 0.015 65);
   --secondary-foreground: oklch(0.35 0.025 42);
   --muted: oklch(0.948 0.01 65);
@@ -44,7 +44,7 @@
   --destructive: oklch(0.577 0.22 27);
   --border: oklch(0.89 0.017 62);
   --input: oklch(0.89 0.017 62);
-  --ring: oklch(0.62 0.08 34);
+  --ring: oklch(0.62 0.201 31);
   --radius: 0.85rem;
 }
 
@@ -54,4 +54,4 @@
   button, input, textarea, select { font: inherit; }
 }
 
-::selection { background: #E7C8BE; color: #3A2B26; }
+::selection { background: #F1B7AD; color: #2B2421; }

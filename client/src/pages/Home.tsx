@@ -1,33 +1,37 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { StatusPill, type ContentStatusKey, statusLabel } from "@/components/StatusPill";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { cn } from "@/lib/utils";
+import { trpc } from "@/lib/trpc";
+import { ArrowUpRight, CalendarClock, ChevronRight, FilePenLine, Heart, Lightbulb, Send, Sparkles, TrendingUp } from "lucide-react";
+import { Link } from "wouter";
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
- */
+const stageColors: Record<ContentStatusKey, string> = { idea: "bg-[#C98670]", draft: "bg-[#B5AAA1]", review: "bg-[#D6A144]", scheduled: "bg-[#73A686]", published: "bg-[#A36C94]" };
+
+const formatNumber = (value: number) => value >= 10000 ? `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}w` : value.toLocaleString("zh-CN");
+
 export default function Home() {
-  // The useAuth hook provides authentication state.
-  // To implement login/logout, call logout(), or start login from an event
-  // handler: onClick={() => startLogin()} (imported from "@/const"). Never call
-  // startLogin() during render (no href={startLogin()}) — it mints a one-time
-  // nonce cookie and must run only at the moment of navigation.
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
+  const { data, isLoading, error } = trpc.content.overview.useQuery();
+  const totalStages = data?.stageDistribution.reduce((total, stage) => total + stage.count, 0) ?? 0;
+  const metrics = data?.metrics ?? { impressions: 0, engagements: 0, followersGained: 0, engagementRate: 0 };
+  const stageDistribution = data?.stageDistribution ?? ["idea", "draft", "review", "scheduled", "published"].map(status => ({ status: status as ContentStatusKey, count: 0 }));
+  const cards = [
+    { label: "选题储备", value: data?.ideaReserve ?? 0, suffix: "个方向待打磨", icon: Lightbulb, color: "text-[#A8634F] bg-[#F8EAE4]" },
+    { label: "待审核", value: data?.pendingReview ?? 0, suffix: "篇需要确认", icon: FilePenLine, color: "text-[#A37A2D] bg-[#FFF4DC]" },
+    { label: "待发布", value: data?.pendingPublish ?? 0, suffix: "篇已进入排期", icon: Send, color: "text-[#527961] bg-[#EAF3EC]" },
+  ];
 
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  return <div className="mx-auto max-w-7xl space-y-6">
+    <section className="relative overflow-hidden rounded-[1.75rem] bg-[#423430] px-6 py-8 text-[#FFF9F5] shadow-[0_18px_50px_rgba(65,45,38,0.18)] sm:px-9 sm:py-10">
+      <div className="absolute -right-12 -top-16 h-64 w-64 rounded-full bg-[#A66A5E]/25 blur-3xl" /><div className="absolute bottom-0 right-1/4 h-32 w-32 rounded-full bg-[#D6AF7F]/10 blur-2xl" />
+      <div className="relative flex flex-col justify-between gap-7 lg:flex-row lg:items-end"><div><p className="flex items-center gap-2 text-[11px] font-medium tracking-[0.2em] text-[#DFAB98]"><Sparkles className="h-3.5 w-3.5" />SKILL CONTENT ATELIER</p><h1 className="mt-4 max-w-2xl font-serif text-3xl leading-tight sm:text-4xl">让创作成为有节奏的长期主义</h1><p className="mt-3 max-w-xl text-sm leading-7 text-[#D8CAC3]">把每一个灵感、每一轮打磨与每一次复盘，沉淀为属于你的 Skill 内容资产。</p></div><Link href="/library"><Button className="h-10 rounded-xl bg-[#FFF7F1] px-4 text-[#513832] hover:bg-white">新建选题<ArrowUpRight className="ml-2 h-4 w-4" /></Button></Link></div>
+    </section>
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
-    </div>
-  );
+    {error && <div className="rounded-2xl border border-[#F0C9C1] bg-[#FFF5F3] p-4 text-sm text-[#934839]">暂时无法载入运营数据，请稍后刷新。</div>}
+    <section className="grid gap-4 md:grid-cols-3">{cards.map(card => <div key={card.label} className="rounded-2xl border border-[#E9E1D9] bg-[#FFFDFC] p-5 shadow-[0_8px_24px_rgba(79,59,48,0.035)]"><div className="flex items-start justify-between"><div><p className="text-sm text-[#776D65]">{card.label}</p><div className="mt-3 flex items-end gap-2"><span className="font-serif text-3xl text-[#3E3531]">{isLoading ? "—" : card.value}</span><span className="pb-1 text-xs text-[#998E85]">{card.suffix}</span></div></div><span className={cn("flex h-9 w-9 items-center justify-center rounded-xl", card.color)}><card.icon className="h-4 w-4" /></span></div></div>)}</section>
+
+    <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]"><div className="rounded-[1.5rem] border border-[#E9E1D9] bg-[#FFFDFC] p-5 sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-medium tracking-[0.15em] text-[#A49A91]">CONTENT PIPELINE</p><h2 className="mt-1 font-serif text-xl text-[#413632]">内容节奏</h2></div><Link href="/workflow" className="flex items-center text-xs font-medium text-[#96604F] hover:text-[#744234]">进入生产流<ChevronRight className="ml-1 h-3.5 w-3.5" /></Link></div><div className="mt-7"><div className="flex h-3 overflow-hidden rounded-full bg-[#F0ECE6]">{stageDistribution.map(stage => <div key={stage.status} className={cn("h-full transition-all", stageColors[stage.status as ContentStatusKey])} style={{ width: `${totalStages ? (stage.count / totalStages) * 100 : 0}%` }} />)}</div><div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-5">{stageDistribution.map(stage => <div key={stage.status}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", stageColors[stage.status as ContentStatusKey])} /><span className="text-xs text-[#887D74]">{statusLabel(stage.status as ContentStatusKey)}</span></div><p className="mt-1.5 font-serif text-xl text-[#493D38]">{isLoading ? "—" : stage.count}</p></div>)}</div></div></div>
+      <div className="rounded-[1.5rem] border border-[#E9E1D9] bg-[#FFFDFC] p-5 sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-medium tracking-[0.15em] text-[#A49A91]">REVIEW SNAPSHOT</p><h2 className="mt-1 font-serif text-xl text-[#413632]">核心复盘</h2></div><TrendingUp className="h-5 w-5 text-[#B67A66]" /></div><div className="mt-6 grid grid-cols-3 gap-2"><div><p className="text-[11px] text-[#948980]">累计曝光</p><p className="mt-1 font-serif text-xl text-[#453A35]">{formatNumber(metrics.impressions)}</p></div><div><p className="text-[11px] text-[#948980]">总互动</p><p className="mt-1 font-serif text-xl text-[#453A35]">{formatNumber(metrics.engagements)}</p></div><div><p className="text-[11px] text-[#948980]">互动率</p><p className="mt-1 font-serif text-xl text-[#453A35]">{metrics.engagementRate}%</p></div></div><div className="mt-6 flex items-center gap-2 rounded-xl bg-[#F7F1ED] px-3 py-2.5 text-xs text-[#7B6257]"><Heart className="h-3.5 w-3.5" />累计新增粉丝 <strong className="font-semibold">{formatNumber(metrics.followersGained)}</strong></div></div></section>
+
+    <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]"><div className="rounded-[1.5rem] border border-[#E9E1D9] bg-[#FFFDFC] p-5 sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-medium tracking-[0.15em] text-[#A49A91]">NEXT TO ACT</p><h2 className="mt-1 font-serif text-xl text-[#413632]">下一步需要关注</h2></div><CalendarClock className="h-5 w-5 text-[#B67A66]" /></div><div className="mt-5 divide-y divide-[#EFE9E3]">{data?.attentionItems.length ? data.attentionItems.map(item => <div key={item.id} className="flex items-center gap-3 py-3.5 first:pt-0"><StatusPill status={item.status as ContentStatusKey} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-[#514640]">{item.title}</p><p className="mt-1 text-xs text-[#978B82]">{item.themeName}{item.scheduledAt ? ` · ${new Date(item.scheduledAt).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}` : " · 等待处理"}</p></div><ChevronRight className="h-4 w-4 text-[#BAAEA5]" /></div>) : <div className="py-6 text-center text-sm text-[#9B9087]">暂时没有待处理事项。先从一个选题开始吧。</div>}</div></div><div className="rounded-[1.5rem] border border-[#E7D6CF] bg-[#F8EFEB] p-6"><p className="text-xs font-medium tracking-[0.15em] text-[#A26A5B]">WORKING PRINCIPLE</p><h2 className="mt-2 font-serif text-xl leading-snug text-[#4A3832]">发布仍由你掌握，<br />平台只帮你把流程做好。</h2><p className="mt-4 text-sm leading-7 text-[#80675E]">日历用于整理排期、发布前检查与人工结果登记，不会通过非官方方式操作你的账号。</p><Link href="/calendar" className="mt-6 inline-flex items-center text-sm font-medium text-[#8E5547]">查看发布协同<ArrowUpRight className="ml-1.5 h-4 w-4" /></Link></div></section>
+  </div>;
 }

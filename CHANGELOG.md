@@ -122,6 +122,10 @@
 
 [1]: https://developers.cloudflare.com/cloudflare-challenges/troubleshooting/challenge-solve-issues/ "Cloudflare Challenge solve issues"
 
+## 2026-08-29 — README、架构与部署文档完善
+
+README 已从单行占位说明重写为项目主文档，包含产品定位、功能边界、预览截图、业务方案、Mermaid 系统架构、数据模型、技术栈、本地开发、数据库迁移、托管与外部部署说明、质量与合规原则以及项目结构。运营总览和 Skill 内容库的当前预览截图已上传至可公开访问的资源地址并嵌入 README；截图选用理由记录在 `docs/verification/readme-screenshot-selection.md`。
+
 ## 2026-08-28 — 真实运营总览视觉重构
 
 在远端已实现的“赤陶编辑部”侧栏与顶部情境层次基础上，进一步重构运营总览首屏。改造复用既有的 `content.overview` 查询、内容状态、用户隔离与五个业务路由；指标、阶段分布、待关注条目和复盘数据均继续来自真实聚合数据，不使用静态演示内容替代。

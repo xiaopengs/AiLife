@@ -55,3 +55,42 @@
 }
 
 ::selection { background: #F1B7AD; color: #2B2421; }
+
+@layer components {
+  .atelier-sidebar {
+    background-color: #242625;
+    background-image: radial-gradient(circle at 18% 2%, rgba(185, 93, 80, 0.18), transparent 28%);
+  }
+
+  .atelier-stamp {
+    display: flex;
+    height: 3.5rem;
+    width: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1.05rem;
+    color: #fffaf4;
+    background: linear-gradient(145deg, #d57b69, #ae5146);
+    box-shadow: 0 12px 28px rgba(174, 81, 70, 0.22), inset 0 1px rgba(255, 255, 255, 0.24);
+  }
+
+  .atelier-sidebar-mark {
+    display: flex;
+    height: 1.5rem;
+    width: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(235, 170, 158, 0.35);
+    border-radius: 0.5rem;
+    color: #f2a89b;
+    background: rgba(185, 93, 80, 0.16);
+  }
+
+  .atelier-wordmark {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.035em;
+    color: #fcf5eb;
+  }
+}

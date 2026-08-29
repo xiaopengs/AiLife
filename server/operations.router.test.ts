@@ -77,6 +77,12 @@ describe("内容运营关键链路", () => {
     expect(db.markContentPublished).toHaveBeenCalledWith(24, 101, "已在官方客户端人工发布并完成首轮互动。", "https://www.xiaohongshu.com/explore/example");
   });
 
+  it("不允许内容编辑器越过人工协同流程直接设为已排期或已发布", async () => {
+    await expect(createCaller().content.update({ id: 101, content: { ...content, status: "scheduled" } })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(createCaller().content.update({ id: 101, content: { ...content, status: "published" } })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.updateContent).not.toHaveBeenCalled();
+  });
+
   it("为已发布笔记保存人工录入的复盘指标", async () => {
     vi.mocked(db.savePerformanceMetrics).mockResolvedValue({ success: true });
     const metrics = { impressions: 1200, likes: 86, comments: 12, collects: 43, shares: 9, followersGained: 8 };

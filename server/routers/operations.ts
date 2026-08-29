@@ -17,6 +17,10 @@ const contentInput = z.object({
   reviewNotes: z.string().max(5000),
 });
 
+const editableContentInput = contentInput.extend({
+  status: z.enum(["idea", "draft", "review"]),
+});
+
 const metricInput = z.object({
   impressions: z.number().int().min(0),
   likes: z.number().int().min(0),
@@ -30,7 +34,7 @@ export const contentRouter = router({
   overview: protectedProcedure.query(({ ctx }) => db.getOverview(ctx.user.id)),
   list: protectedProcedure.input(z.object({ status: z.enum(contentStatusValues).optional() }).optional()).query(({ ctx, input }) => db.listContent(ctx.user.id, input?.status)),
   create: protectedProcedure.input(contentInput).mutation(({ ctx, input }) => db.createContent(ctx.user.id, input)),
-  update: protectedProcedure.input(z.object({ id: z.number().int().positive(), content: contentInput })).mutation(({ ctx, input }) => db.updateContent(ctx.user.id, input.id, input.content)),
+  update: protectedProcedure.input(z.object({ id: z.number().int().positive(), content: editableContentInput })).mutation(({ ctx, input }) => db.updateContent(ctx.user.id, input.id, input.content)),
   schedule: protectedProcedure.input(z.object({ id: z.number().int().positive(), scheduledAt: z.coerce.date() })).mutation(({ ctx, input }) => db.scheduleContent(ctx.user.id, input.id, input.scheduledAt)),
   markPublished: protectedProcedure.input(z.object({ id: z.number().int().positive(), publishResult: z.string().max(5000), publishedUrl: z.string().url().or(z.literal("")) })).mutation(({ ctx, input }) => db.markContentPublished(ctx.user.id, input.id, input.publishResult, input.publishedUrl)),
   delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteContent(ctx.user.id, input.id)),

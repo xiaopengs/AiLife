@@ -19,7 +19,7 @@
 - SDK 不申请业务未声明的权限；不阻塞主线程；异常一律拦截器隔离
 
 ## 原则 V — Java 技术栈（Java Stack Constraint)
-- SDK 侧纯 Java 8（minSdk 21），服务端 Java 17 + Spring Boot 3；不引入 Kotlin/COROUTINES 依赖
+- SDK 侧纯 Java 8（minSdk 21），端侧数据中台服务同为 Java 8（Android 进程内）；不引入 Kotlin 依赖
 - 协议演进仅允许 minor 向后兼容；major 变更须拒绝旧版并走兼容性监控
 
 ## 原则 VI — 可观测与可降级（Observable & Degradeable）

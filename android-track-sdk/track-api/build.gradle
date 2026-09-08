@@ -1,0 +1,12 @@
+apply plugin: 'java-library'
+
+// Pure-Java: no Android dependencies. Verified with javac + JUnit.
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+dependencies {
+    api project(':track-core')
+    testImplementation 'junit:junit:4.13.2'
+}

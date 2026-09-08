@@ -1,0 +1,5 @@
+rootProject.name = "ailife-android-track-sdk"
+include ':track-api'
+include ':track-core'
+include ':track-hub'
+include ':track-android'

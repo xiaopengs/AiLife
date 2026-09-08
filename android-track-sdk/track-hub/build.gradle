@@ -1,0 +1,13 @@
+apply plugin: 'java-library'
+
+// On-device data platform (hub) engine: ingestion, storage governance,
+// report scheduling, health. Pure Java; bound by track-android.
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+dependencies {
+    api project(':track-core')
+    testImplementation 'junit:junit:4.13.2'
+}

@@ -1,0 +1,10 @@
+// Root build for the ailife Android tracking SDK.
+// Pure-Java modules are verified in CI with javac/JUnit (JDK 8+ compatible
+// source); track-android compiles against the Android SDK (compileSdk 34,
+// minSdk 21) in a real Android environment.
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1010" viewBox="0 0 1120 1010" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<rect width="1120" height="1010" fill="#FFFFFF"/>
+<marker id="m6941C6" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0L7,3.5L0,7Z" fill="#6941C6"/></marker>
+<marker id="m175CD3" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0L7,3.5L0,7Z" fill="#175CD3"/></marker>
+<marker id="m067647" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0L7,3.5L0,7Z" fill="#067647"/></marker>
+<marker id="m667085" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0L7,3.5L0,7Z" fill="#667085"/></marker>
+<rect x="16" y="48" width="1068" height="560" fill="#FFFFFF" stroke="#D0D5DD" stroke-width="1.6" rx="4"/>
+<text x="28" y="64" text-anchor="start" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Android 设备（业务进程 + 数据平台进程）</text>
+<rect x="16" y="646" width="1068" height="340" fill="#F6FEF9" stroke="#6EE7A8" stroke-width="1.2" rx="4"/>
+<text x="28" y="662" text-anchor="start" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">数据中台 / 服务端（接收 · 实时处理 · 存储与查询）</text>
+<rect x="36" y="86" width="1044" height="64" fill="#FBFAFF" stroke="#C3B2F0" stroke-width="1.2" rx="4"/>
+<text x="1064" y="97.5" text-anchor="end" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">① 接口层</text>
+<rect x="36" y="164" width="1044" height="64" fill="#FBFAFF" stroke="#C3B2F0" stroke-width="1.2" rx="4"/>
+<text x="1064" y="175.5" text-anchor="end" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">② 适配层</text>
+<rect x="36" y="242" width="1044" height="64" fill="#FBFAFF" stroke="#C3B2F0" stroke-width="1.2" rx="4"/>
+<text x="1064" y="253.5" text-anchor="end" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">③ 队列/存储</text>
+<rect x="36" y="320" width="1044" height="248" fill="#F5FAFF" stroke="#7EB2E8" stroke-width="1.2" rx="4"/>
+<text x="1064" y="331.5" text-anchor="end" font-size="12.5" fill="#475467" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">④ 跨进程通道</text>
+<polyline points="146,140 146,184" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="146,218 146,260" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="346,140 346,184" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="346,218 346,260" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="546,140 546,184" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="546,218 546,260" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="746,140 746,184" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="746,218 746,260" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="946,140 946,184" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="946,218 946,260" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="126,294 126,312 246,312 246,350" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="326,294 326,312 246,312 246,350" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="526,294 526,312 246,312 246,350" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="726,294 726,312 246,312 246,350" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="946,294 946,312 246,312 246,350" fill="none" stroke="#6941C6" stroke-width="1.6" marker-end="url(#m6941C6)"/>
+<polyline points="436,400 582,400" fill="none" stroke="#175CD3" stroke-width="1.6" marker-end="url(#m175CD3)"/>
+<polyline points="582,424 436,424" fill="none" stroke="#175CD3" stroke-width="1.6" marker-end="url(#m175CD3)"/>
+<polyline points="166,450 166,474" fill="none" stroke="#175CD3" stroke-width="1.6" marker-end="url(#m175CD3)"/>
+<polyline points="422,450 422,474" fill="none" stroke="#175CD3" stroke-width="1.6" marker-end="url(#m175CD3)"/>
+<polyline points="822,400 852,400" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="852,500 822,500" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="722,518 722,686 30,686 30,806 46,806" fill="none" stroke="#067647" stroke-width="2.2" marker-end="url(#m067647)"/>
+<polyline points="136,784 136,744" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="196,722 256,722" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="436,722 486,722" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="666,722 716,722" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="171,744 171,764 346,764 346,784" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="576,744 576,784" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="801,744 801,784" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="851,744 851,758 995,758 995,784" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="886,806 916,806" fill="none" stroke="#067647" stroke-width="1.6" marker-end="url(#m067647)"/>
+<polyline points="436,732 461,732 461,868" fill="none" stroke="#667085" stroke-width="1.4" stroke-dasharray="7 5" marker-end="url(#m667085)"/>
+<rect x="36" y="106" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="146.0" y="123.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">init(config)</text>
+<rect x="36" y="184" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="146.0" y="201.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Activity/PV 自动采集</text>
+<rect x="36" y="260" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="146.0" y="277.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">内存队列（有界）</text>
+<rect x="236" y="106" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="346.0" y="123.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">track(event, props)</text>
+<rect x="236" y="184" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="346.0" y="201.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">点击/曝光 采样</text>
+<rect x="236" y="260" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="346.0" y="277.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Room 磁盘队列（分片）</text>
+<rect x="436" y="106" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="546.0" y="123.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">trackList(events)</text>
+<rect x="436" y="184" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="546.0" y="201.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Crash/ANR 捕获</text>
+<rect x="436" y="260" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="546.0" y="277.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">公共属性补齐 / 去重</text>
+<rect x="636" y="106" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="746.0" y="123.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">setUserProfile / flush()</text>
+<rect x="636" y="184" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="746.0" y="201.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">性能/网络 采集</text>
+<rect x="636" y="260" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="746.0" y="277.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">过期 / 容量淘汰</text>
+<rect x="836" y="106" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="946.0" y="123.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">optOut / optIn / 开关</text>
+<rect x="836" y="184" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="946.0" y="201.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">业务手动埋点封装</text>
+<rect x="836" y="260" width="220" height="34" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<text x="946.0" y="277.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">丢弃计数 / 降级</text>
+<rect x="56" y="350" width="380" height="100" fill="#EFF8FF" stroke="#175CD3" stroke-width="1.5" rx="6"/>
+<text x="246.0" y="380.0" text-anchor="middle" font-size="12" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">ChannelCore 通道内核</text>
+<text x="246.0" y="400.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">路由 · 重试退避 · 流控</text>
+<text x="246.0" y="420.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">压缩加密 · 去重 · 分片</text>
+<rect x="56" y="474" width="220" height="44" fill="#EFF8FF" stroke="#175CD3" stroke-width="1.5" rx="6"/>
+<text x="166.0" y="496.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">通道本地兜底库（磁盘队列）</text>
+<rect x="312" y="474" width="220" height="44" fill="#EFF8FF" stroke="#175CD3" stroke-width="1.5" rx="6"/>
+<text x="422.0" y="496.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">降级内存缓冲（有界丢弃）</text>
+<rect x="582" y="350" width="240" height="100" fill="#ECFDF3" stroke="#067647" stroke-width="1.5" rx="6"/>
+<text x="702.0" y="380.0" text-anchor="middle" font-size="12" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">DataProvider 系统服务模块</text>
+<text x="702.0" y="400.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">ContentProvider · Binder</text>
+<text x="702.0" y="420.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">权限校验 · 合并窗口 · 协议 v1</text>
+<rect x="582" y="474" width="240" height="44" fill="#ECFDF3" stroke="#067647" stroke-width="1.5" rx="6"/>
+<text x="702.0" y="496.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">上报客户端（批量/压缩/退避）</text>
+<rect x="852" y="350" width="212" height="168" fill="#ECFDF3" stroke="#067647" stroke-width="1.5" rx="6"/>
+<text x="958.0" y="414.0" text-anchor="middle" font-size="12" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">平台本地库（Room）</text>
+<text x="958.0" y="434.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">未上报缓冲 · 断网续传</text>
+<text x="958.0" y="454.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">状态查询 queryTrack()</text>
+<rect x="46" y="700" width="150" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="121.0" y="712.0" text-anchor="middle" font-size="12" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">接入网关</text>
+<text x="121.0" y="732.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">鉴权·限流·解压校验</text>
+<rect x="256" y="700" width="180" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="346.0" y="722.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Kafka 事件缓冲</text>
+<rect x="486" y="700" width="180" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="576.0" y="722.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Flink / Spark 实时清洗</text>
+<rect x="716" y="700" width="170" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="801.0" y="712.0" text-anchor="middle" font-size="12" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">ClickHouse / Doris</text>
+<text x="801.0" y="732.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">明细仓</text>
+<rect x="46" y="784" width="180" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="136.0" y="806.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">负载均衡 · 多机房容灾</text>
+<rect x="256" y="784" width="180" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="346.0" y="806.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">点位/元数据（MySQL）</text>
+<rect x="486" y="784" width="180" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="576.0" y="806.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Elasticsearch 行为检索</text>
+<rect x="716" y="784" width="170" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="801.0" y="806.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">BI 看板 / 查询 API</text>
+<rect x="916" y="784" width="158" height="44" fill="#FFFFFF" stroke="#067647" stroke-width="1.3" rx="6"/>
+<text x="995.0" y="806.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">离线数仓（Hive）</text>
+<rect x="456" y="868" width="170" height="44" fill="#F9FAFB" stroke="#667085" stroke-width="1.3" rx="6" stroke-dasharray="7 5"/>
+<text x="541.0" y="890.0" text-anchor="middle" font-size="12" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">x-axis 冷备 / 回放源</text>
+<rect x="410" y="16" width="18" height="13" fill="#FFFFFF" stroke="#6941C6" stroke-width="1.3" rx="6"/>
+<rect x="600" y="16" width="18" height="13" fill="#EFF8FF" stroke="#175CD3" stroke-width="1.5" rx="6"/>
+<rect x="810" y="16" width="18" height="13" fill="#ECFDF3" stroke="#067647" stroke-width="1.5" rx="6"/>
+<text x="509" y="392" text-anchor="middle" font-size="11" fill="#175CD3" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">跨进程 IPC</text>
+<text x="509" y="440" text-anchor="middle" font-size="11" fill="#175CD3" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">配置 / 灰度 / 降级下发</text>
+<text x="837" y="490" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">读取</text>
+<text x="450" y="678" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">HTTPS 上报（批量 / 加密 / 签名）</text>
+<text x="226" y="712" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">批量写入</text>
+<text x="461" y="712" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">订阅</text>
+<text x="691" y="710" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">实时入仓</text>
+<text x="250" y="754" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">点位 / 元数据</text>
+<text x="566" y="768" text-anchor="end" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">清洗结果</text>
+<text x="920" y="750" text-anchor="middle" font-size="11" fill="#067647" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">T+1</text>
+<text x="451" y="850" text-anchor="end" font-size="11" fill="#667085" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">冷备 / 回放</text>
+<text x="434" y="27" text-anchor="start" font-size="11" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">SDK 接口 / 采集 / 缓冲</text>
+<text x="624" y="27" text-anchor="start" font-size="11" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">跨进程通道（业务进程）</text>
+<text x="834" y="27" text-anchor="start" font-size="11" fill="#1F2328" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">数据平台 / 服务端</text>
+<text x="1000" y="27" text-anchor="start" font-size="11" fill="#667085" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">异步 / 容灾</text>
+<text x="24" y="26" text-anchor="start" font-size="15" fill="#1F2328" font-weight="600" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">Android 端侧埋点 SDK 整体架构（Spec-Kit · 001）</text>
+<text x="56" y="560" text-anchor="start" font-size="11" fill="#475467" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" dominant-baseline="central">协议：protobuf + gzip · 自定义 permission + signature 校验</text>
+</svg>

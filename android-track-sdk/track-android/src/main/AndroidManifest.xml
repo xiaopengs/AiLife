@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission
+        android:name="com.ailife.permission.TRACK_WRITE"
+        android:protectionLevel="signature" />
+
+    <application>
+        <provider
+            android:name=".AilifeTrackProvider"
+            android:authorities="com.ailife.dataplatform.track"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            android:readPermission="com.ailife.permission.TRACK_WRITE"
+            android:writePermission="com.ailife.permission.TRACK_WRITE" />
+
+        <service
+            android:name=".AilifeTrackService"
+            android:exported="true"
+            android:permission="com.ailife.permission.TRACK_WRITE">
+            <intent-filter>
+                <action android:name="com.ailife.track.aidl.ITrackService" />
+            </intent-filter>
+        </service>
+
+        <provider
+            android:name=".AilifeTrackInit"
+            android:authorities="${applicationId}.ailife-track-init"
+            android:exported="false"
+            android:initOrder="100" />
+    </application>
+</manifest>

@@ -7,8 +7,9 @@ import java.util.List;
 
 /**
  * Hub-side durable event store: day-partitioned journals with the same
- * frame format as the client Outbox (prefix hub-). Eviction strictly
- * newest-first; only TTL-expired, quota-forced and oversize records are
+ * frame format as the client Outbox (prefix hub-). At capacity the oldest
+ * records are evicted so the newest events are retained; only TTL-expired,
+ * quota-forced and oversize records are
  * discarded, all counted (zero accidental loss).
  */
 public final class HubEventStore {
@@ -36,6 +37,7 @@ public final class HubEventStore {
                 metrics.incEvictedQuota();
                 return false;
             }
+            metrics.incEvictedQuota(journal.lastOfferEvictedCount());
             metrics.incStored();
             return true;
         } catch (IOException ioe) {

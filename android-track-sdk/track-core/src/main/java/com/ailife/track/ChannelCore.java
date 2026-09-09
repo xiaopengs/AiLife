@@ -113,8 +113,11 @@ public final class ChannelCore {
                 nextAttemptAt = time.nowMs() + backoff.nextDelayMs();
                 break;
             case RESULT_INVALID:
-                // poisoned batch: quarantine (drop, count, never retransmit)
-                state = State.QUARANTINE;
+                // INVALID is a property of this batch, not a permanent
+                // channel failure. The caller drops only this batch; later
+                // valid batches must remain sendable.
+                state = State.CONNECTED;
+                nextAttemptAt = 0;
                 quarantineDetail = r.detail;
                 log.w("ChannelCore", "invalid batch quarantined: " + r.detail);
                 break;
@@ -129,9 +132,17 @@ public final class ChannelCore {
         }
     }
 
-    /** Result of an INVALID batch: caller acks (drops) those records. */
-    public boolean shouldDropBatch() {
-        return state == State.QUARANTINE;
+    /** Result of an INVALID batch: caller acks (drops) those records only. */
+    public boolean shouldDropBatch(Transport.Result result) {
+        return result != null && result.code == Transport.Code.RESULT_INVALID;
+    }
+
+    /**
+     * @deprecated INVALID is batch-local; use {@link #shouldDropBatch(Transport.Result)}.
+     */
+    @Deprecated
+    public synchronized boolean shouldDropBatch() {
+        return false;
     }
 
     public synchronized String quarantineDetail() {

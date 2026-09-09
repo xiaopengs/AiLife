@@ -9,9 +9,8 @@ import com.ailife.track.aidl.ITrackCallback;
 import com.ailife.track.aidl.ITrackService;
 
 /**
- * Hub-side AIDL service (alternative entry point to AilifeTrackProvider).
- * Runs in the data-platform process; delegates into the same HubController
- * so both channels share ingestion/dedup/storage/health/report logic.
+ * Hub-side AIDL service, sharing the same ingress validation and HubController
+ * process singleton as {@link AilifeTrackProvider}.
  */
 public class AilifeTrackService extends Service {
 
@@ -27,36 +26,34 @@ public class AilifeTrackService extends Service {
     public IBinder onBind(Intent intent) {
         return new ITrackService.Stub() {
             @Override
-            public void sendBatch(String batchId, byte[] blob, String sig, long ts,
+            public void sendBatch(String batchId, int version, String appKey,
+                                  boolean encrypted, byte[] blob, String sig, long ts,
                                   ITrackCallback callback) {
-                int code = Transport.Code.RESULT_INVALID.wire;
-                String detail = null;
+                Transport.Code result = Transport.Code.RESULT_INVALID;
+                String detail;
                 try {
-                    long now = System.currentTimeMillis();
-                    if (blob == null || Math.abs(now - ts) > 5L * 60 * 1000) {
-                        code = Transport.Code.RESULT_INVALID.wire;
-                        detail = "ts window";
-                    } else if (!Signature.safeEquals(sig,
-                            Signature.signBatch(appKeyOf(), ts, blob))) {
-                        code = Transport.Code.RESULT_INVALID.wire;
-                        detail = "bad signature";
+                    InboundBatchDecoder.DecodedBatch decoded = InboundBatchDecoder.decode(
+                            version, appKey, encrypted, blob, sig, ts,
+                            System.currentTimeMillis());
+                    if (!decoded.isValid()) {
+                        detail = decoded.detail;
+                    } else if (hub == null) {
+                        detail = "hub unavailable";
                     } else {
-                        byte[] proto = Gzip.decompress(blob);
-                        java.util.List<TrackEvent> events =
-                                new java.util.ArrayList<TrackEvent>();
-                        for (byte[] raw : BatchCodec.decodeBatch(proto)) {
-                            events.add(BatchCodec.decodeEvent(raw));
-                        }
-                        code = hub.ingestBatch(events).wire;
+                        result = hub.ingestBatch(decoded.events);
+                        detail = null;
                     }
-                } catch (Exception e) {
-                    detail = e.getClass().getSimpleName();
+                } catch (RuntimeException e) {
+                    detail = "ingest failure";
                 }
-                reply(callback, code, detail);
+                reply(callback, result.wire, detail);
             }
 
             @Override
             public int[] getStatus() {
+                if (hub == null) {
+                    return new int[] {0, 0, 0, 0};
+                }
                 java.util.Map<String, Object> row = hub.statusRow();
                 return new int[] {
                         "DEGRADED".equals(row.get("state")) ? 2 : 1,
@@ -69,8 +66,9 @@ public class AilifeTrackService extends Service {
             @Override
             public void queryEvents(long fromTs, long toTs, String eventIdLike,
                                     int limit, int offset, ITrackCallback callback) {
-                java.util.List<TrackEvent> events =
-                        hub.queryEvents(fromTs, toTs, eventIdLike, limit);
+                java.util.List<TrackEvent> events = hub == null
+                        ? java.util.Collections.<TrackEvent>emptyList()
+                        : hub.queryEvents(fromTs, toTs, eventIdLike, limit);
                 String[] rows = new String[events.size()];
                 for (int i = 0; i < events.size(); i++) {
                     TrackEvent e = events.get(i);
@@ -78,9 +76,11 @@ public class AilifeTrackService extends Service {
                             + (e.dedupKey == null ? "" : e.dedupKey);
                 }
                 try {
-                    callback.onQueryResult(rows);
+                    if (callback != null) {
+                        callback.onQueryResult(rows);
+                    }
                 } catch (RemoteException ignore) {
-                    // client died; nothing to do
+                    // Client died; there is no local state to roll back.
                 }
             }
 
@@ -89,22 +89,17 @@ public class AilifeTrackService extends Service {
                     try {
                         callback.onResult(code, detail);
                     } catch (RemoteException ignore) {
-                        // client died before result; client keeps batch and retries
+                        // Client died before the result; it keeps and retries its batch.
                     }
                 }
             }
         };
     }
 
-    private String appKeyOf() {
-        return "default-appkey";
-    }
-
     @Override
     public void onDestroy() {
-        if (hub != null) {
-            hub.shutdown();
-        }
+        // The provider can outlive this service (or vice versa). Only explicit
+        // process/test shutdown is allowed to close HubController resources.
         super.onDestroy();
     }
 }

@@ -4,23 +4,23 @@ import com.ailife.track.aidl.ITrackCallback;
 
 /**
  * AIDL transport interface (business process -> data platform process).
- * Alternative to the ContentProvider channel; selected via
- * TrackConfig.ChannelMode.AIDL. One-way oneway calls keep the client from
- * blocking; the callback delivers the four-value result code.
+ * Every batch carries the sender's app key and encryption state so the hub
+ * verifies and decodes exactly the same wire format as the ContentProvider.
  */
 interface ITrackService {
 
     /**
      * Send one gzip-compressed batch.
-     * @param batchId  content hash id (client diagnostics)
-     * @param blob     gzip(proto EventBatch), optionally AES-GCM wrapped
-     * @param sig      HMAC-SHA256(appKey, ts + "." + sha256(blob))
-     * @param ts       client epoch ms (anti-replay window ±5min)
-     * @param callback async result callback; code is one of
-     *                 1 SUCCEEDED / 2 THROTTLED / 3 RETRY_LATER / 4 INVALID
+     * @param batchId content hash id (client diagnostics)
+     * @param version protocol version; currently 1
+     * @param appKey sender application key used for HMAC and optional AES key
+     * @param encrypted true iff the bytes inside gzip are AES-GCM wrapped
+     * @param blob gzip(proto EventBatch) or gzip(AES-GCM(proto EventBatch))
+     * @param sig HMAC-SHA256(appKey, ts + "." + sha256(blob))
+     * @param ts client epoch ms (anti-replay window +/-5 minutes)
      */
-    oneway void sendBatch(String batchId, in byte[] blob, String sig, long ts,
-            ITrackCallback callback);
+    oneway void sendBatch(String batchId, int version, String appKey, boolean encrypted,
+            in byte[] blob, String sig, long ts, ITrackCallback callback);
 
     /** Status probe: returns [state, pending, health_x100, degrade_level]. */
     int[] getStatus();

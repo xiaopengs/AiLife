@@ -1,6 +1,5 @@
 package com.ailife.track;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +31,8 @@ public final class ReportScheduler {
     private int retryIndex = -1; // -1 = healthy
     private long nextAttemptAt = 0;
     private long lastDrainAt = 0;
+    private int batchLimit = TRIGGER_COUNT;
+    private boolean stoppedForAuth;
 
     public ReportScheduler(HubEventStore store, CloudSink sink, NetworkProbe network,
                            TimeSource time, Logger log, IngestionPipeline.Metrics metrics) {
@@ -45,11 +46,14 @@ public final class ReportScheduler {
 
     /** @return true when a report should fire now (any trigger dimension). */
     public synchronized boolean shouldReport(long nowMs) {
-        if (!network.isOnline() || store.count() == 0) {
+        if (stoppedForAuth || !network.isOnline() || store.count() == 0) {
+            return false;
+        }
+        if (nowMs < nextAttemptAt) {
             return false;
         }
         if (retryIndex >= 0) {
-            return nowMs >= nextAttemptAt;
+            return true;
         }
         if (nowMs - lastDrainAt >= TRIGGER_WINDOW_MS) {
             return true;
@@ -60,42 +64,81 @@ public final class ReportScheduler {
     /** Drain up to one cloud batch; returns number of events uploaded. */
     public synchronized int drain() {
         long now = time.nowMs();
-        if (!network.isOnline()) {
+        if (stoppedForAuth || !network.isOnline() || now < nextAttemptAt) {
             return 0; // offline: data stays queued
         }
-        List<TrackEvent> events = store.queryEvents(0, Long.MAX_VALUE, null, TRIGGER_COUNT);
-        if (events.isEmpty()) {
-            return 0;
-        }
-        List<byte[]> encoded = new ArrayList<byte[]>(events.size());
-        for (TrackEvent e : events) {
-            encoded.add(BatchCodec.encodeEvent(e, TrackVersion.VERSION, e.appVer,
-                    e.osVer, e.device));
-        }
-        byte[] proto = BatchCodec.encodeBatch(encoded);
-        String batchId = Signature.sha256Hex(proto).substring(0, 16);
-        try {
-            byte[] gz = Gzip.compress(proto);
+        // 413 is safe to retry immediately only after shrinking this selected
+        // batch. A single-record 413 is retained and backed off rather than
+        // being deleted or spun forever.
+        while (true) {
+            List<TrackEvent> events = store.queryEvents(0, Long.MAX_VALUE, null, batchLimit);
+            if (events.isEmpty()) {
+                return 0;
+            }
+            List<byte[]> encoded = new ArrayList<byte[]>(events.size());
+            for (TrackEvent e : events) {
+                encoded.add(BatchCodec.encodeEvent(e, TrackVersion.VERSION, e.appVer,
+                        e.osVer, e.device));
+            }
+            byte[] proto = BatchCodec.encodeBatch(encoded);
+            String batchId = Signature.sha256Hex(proto).substring(0, 16);
+            final byte[] gz;
+            try {
+                gz = Gzip.compress(proto);
+            } catch (java.io.IOException e) {
+                log.e("ReportScheduler", "batch compression failed", e);
+                onRetryableFailure();
+                return 0;
+            }
             long ts = time.nowMs();
             String appKey = "default-appkey";
-            boolean ok = sink.sendBatch(batchId, gz, Signature.signBatch(appKey, ts, gz), ts);
-            if (ok) {
+            CloudSink.Result result = sink.sendBatch(batchId, gz,
+                    Signature.signBatch(appKey, ts, gz), ts);
+            if (result == null) {
+                // Defensively classify a broken custom sink as retryable.
+                result = CloudSink.Result.retryable();
+            }
+            if (result.kind == CloudSink.Result.Kind.SUCCESS) {
                 metrics.incSendSuccess();
                 retryIndex = -1;
                 lastDrainAt = now;
+                nextAttemptAt = 0;
+                // This is the only queue deletion path: an explicit cloud 2xx.
                 store.removeUploaded(events);
                 return events.size();
             }
-            onCloudFailure();
-            return 0;
-        } catch (IOException e) {
-            log.e("ReportScheduler", "cloud upload failed", e);
-            onCloudFailure();
+            if (result.kind == CloudSink.Result.Kind.AUTH_FAILURE) {
+                metrics.incSendFailure();
+                stoppedForAuth = true;
+                nextAttemptAt = Long.MAX_VALUE;
+                log.w("ReportScheduler", "cloud authorization failed; reporting stopped");
+                return 0;
+            }
+            if (result.kind == CloudSink.Result.Kind.RATE_LIMITED) {
+                if (result.retryAfterMs >= 0) {
+                    metrics.incSendFailure();
+                    // Retry-After is a server contract, not a hint for the
+                    // normal exponential ladder: preserve it exactly.
+                    retryIndex = -1;
+                    nextAttemptAt = time.nowMs() + result.retryAfterMs;
+                } else {
+                    onRetryableFailure();
+                }
+                return 0;
+            }
+            if (result.kind == CloudSink.Result.Kind.TOO_LARGE
+                    && events.size() > 1) {
+                metrics.incSendFailure();
+                batchLimit = Math.max(1, events.size() / 2);
+                // Retain every record and immediately retry the smaller prefix.
+                continue;
+            }
+            onRetryableFailure();
             return 0;
         }
     }
 
-    private void onCloudFailure() {
+    private void onRetryableFailure() {
         metrics.incSendFailure();
         retryIndex = Math.min(retryIndex + 1, RETRY_LADDER.length - 1);
         nextAttemptAt = time.nowMs() + RETRY_LADDER[retryIndex];
@@ -108,5 +151,15 @@ public final class ReportScheduler {
 
     public synchronized int retryIndex() {
         return retryIndex;
+    }
+
+    /** True after 401/403; reports remain queued until a scheduler is recreated. */
+    public synchronized boolean isStoppedForAuth() {
+        return stoppedForAuth;
+    }
+
+    /** Current maximum records per cloud attempt; exposed for deterministic tests. */
+    public synchronized int batchLimit() {
+        return batchLimit;
     }
 }

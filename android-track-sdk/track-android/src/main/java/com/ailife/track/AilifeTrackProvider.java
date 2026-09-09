@@ -8,17 +8,15 @@ import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 
-
 /**
- * Data-platform ContentProvider (contracts/api.md AilifeTrackProvider).
- * insert(): events|status|metrics URIs; query(): status/metrics/events.
- * Result codes are appended as the last path segment:
- * /events/1 SUCCEEDED, /events/2 THROTTLED, /events/3 RETRY_LATER,
- * /events/4 INVALID.
+ * Data-platform ContentProvider. The write contract is
+ * {@code content://com.ailife.dataplatform.track/events?ver=1}; insert returns
+ * {@code .../events/<result-code>}.
  */
 public class AilifeTrackProvider extends ContentProvider {
 
     public static final String AUTHORITY = "com.ailife.dataplatform.track";
+    public static final String TRACK_WRITE_PERMISSION = "com.ailife.permission.TRACK_WRITE";
     public static final Uri BASE = Uri.parse("content://" + AUTHORITY);
 
     private static final int URI_EVENTS = 1;
@@ -52,55 +50,41 @@ public class AilifeTrackProvider extends ContentProvider {
         return true;
     }
 
-        @Override
+    @Override
     public Uri insert(Uri uri, ContentValues values) {
-        int match = MATCHER.match(uri);
-        if (match != URI_EVENTS || values == null) {
-            return Uri.withAppendedPath(BASE, "events/"
-                    + Transport.Code.RESULT_INVALID.wire);
+        if (MATCHER.match(uri) != URI_EVENTS
+                || !String.valueOf(InboundBatchDecoder.PROTOCOL_VERSION)
+                        .equals(uri.getQueryParameter("ver"))
+                || values == null) {
+            return resultUri(Transport.Code.RESULT_INVALID);
         }
+
         byte[] blob = values.getAsByteArray("blob");
-        String sig = values.getAsString("sig");
-        Long tsBoxed = values.getAsLong("ts");
-        if (blob == null || tsBoxed == null) {
-            return Uri.withAppendedPath(BASE, "events/"
-                    + Transport.Code.RESULT_INVALID.wire);
+        String signature = values.getAsString("sig");
+        Long timestamp = values.getAsLong("ts");
+        String appKey = values.getAsString("app_key");
+        Boolean encrypted = values.getAsBoolean("encrypted");
+        if (timestamp == null || encrypted == null) {
+            return resultUri(Transport.Code.RESULT_INVALID);
         }
-        long ts = tsBoxed;
-        // anti-replay: reject batches older/newer than ±5min
-        long now = System.currentTimeMillis();
-        if (Math.abs(now - ts) > 5L * 60 * 1000) {
-            return Uri.withAppendedPath(BASE, "events/"
-                    + Transport.Code.RESULT_INVALID.wire);
+
+        InboundBatchDecoder.DecodedBatch decoded = InboundBatchDecoder.decode(
+                InboundBatchDecoder.PROTOCOL_VERSION, appKey, encrypted.booleanValue(), blob,
+                signature, timestamp.longValue(), System.currentTimeMillis());
+        if (!decoded.isValid() || hub == null) {
+            return resultUri(Transport.Code.RESULT_INVALID);
         }
-        if (!Signature.safeEquals(sig,
-                Signature.signBatch(appKeyFor(values), ts, blob))) {
-            return Uri.withAppendedPath(BASE, "events/"
-                    + Transport.Code.RESULT_INVALID.wire);
-        }
-        return Uri.withAppendedPath(BASE, "events/" + ingest(blob).wire);
+        return resultUri(hub.ingestBatch(decoded.events));
     }
 
-    private Transport.Code ingest(byte[] blob) {
-        try {
-            byte[] proto = Gzip.decompress(blob);
-            // decrypt when payload was encrypted (AES-GCM, appKey-derived)
-            java.util.List<TrackEvent> events = new java.util.ArrayList<TrackEvent>();
-            for (byte[] raw : BatchCodec.decodeBatch(proto)) {
-                events.add(BatchCodec.decodeEvent(raw));
-            }
-            return hub.ingestBatch(events);
-        } catch (Exception e) {
-            return Transport.Code.RESULT_INVALID;
-        }
+    private static Uri resultUri(Transport.Code code) {
+        return BASE.buildUpon()
+                .appendPath("events")
+                .appendPath(String.valueOf(code.wire))
+                .build();
     }
 
-    private String appKeyFor(ContentValues values) {
-        String k = values.getAsString("app_key");
-        return k == null || k.isEmpty() ? "default-appkey" : k;
-    }
-
-        @Override
+    @Override
     public Cursor query(Uri uri, String[] projection,
                         String selection, String[] args,
                         String sort) {
@@ -118,8 +102,7 @@ public class AilifeTrackProvider extends ContentProvider {
         }
         if (match == URI_METRICS) {
             MatrixCursor c = new MatrixCursor(METRIC_COLUMNS);
-            for (java.util.Map.Entry<String, Long> e
-                    : hub.metricsSnapshot().entrySet()) {
+            for (java.util.Map.Entry<String, Long> e : hub.metricsSnapshot().entrySet()) {
                 c.addRow(new Object[] {e.getKey(), e.getValue()});
             }
             return c;
@@ -141,61 +124,88 @@ public class AilifeTrackProvider extends ContentProvider {
     }
 
     @Override
-    public int update(Uri uri, ContentValues values,
-                      String s, String[] strings) {
-        return 0; // read-only surface (analyze.md note 1)
+    public int update(Uri uri, ContentValues values, String s, String[] strings) {
+        return 0;
     }
 
     @Override
     public int delete(Uri uri, String s, String[] strings) {
-        return 0; // read-only surface (analyze.md note 1)
+        return 0;
     }
 
-        @Override
+    @Override
     public String getType(Uri uri) {
         return "vnd.android.cursor.dir/vnd." + AUTHORITY + ".events";
     }
 
     @Override
     public void shutdown() {
+        // Component teardown is not process teardown. HubHolder is shared by
+        // this provider and AilifeTrackService and remains usable if either is
+        // recreated by Android.
         super.shutdown();
-        if (hub != null) {
-            hub.shutdown();
-        }
     }
 
-    /** Lazy singleton so multiple provider instances share one controller. */
+    /** Explicit process-level hooks for Android integration tests. */
+    public static void shutdownHubProcessForTest() {
+        HubHolder.shutdownForProcess();
+    }
+
+    /** Explicitly replaces the process singleton; intended for test isolation. */
+    public static void recreateHubProcessForTest(Context context) {
+        HubHolder.recreateForProcess(context);
+    }
+
+    /** Lazy process singleton shared by the provider and AIDL service. */
     static final class HubHolder {
         private static volatile HubController instance;
 
-        static HubController get(Context ctx) {
+        static HubController get(Context context) {
             if (instance == null) {
                 synchronized (HubHolder.class) {
                     if (instance == null) {
-                        instance = new HubController(
-                                new java.io.File(ctx.getNoBackupFilesDir(), "hub-store"),
-                                20L * 1024 * 1024,
-                                TrackConfig.DEFAULT_EVENT_TTL_DAYS,
-                                new CloudSink.Http("https://track.ailife.example"),
-                                new ReportScheduler.NetworkProbe() {
-                                    @Override
-                                    public boolean isOnline() {
-                                        android.net.ConnectivityManager cm =
-                                                (android.net.ConnectivityManager) ctx
-                                                        .getSystemService(Context.CONNECTIVITY_SERVICE);
-                                        if (cm == null) {
-                                            return false;
-                                        }
-                                        android.net.NetworkInfo info = cm.getActiveNetworkInfo();
-                                        return info != null && info.isConnected();
-                                    }
-                                },
-                                TimeSource.SYSTEM,
-                                new AndroidLogger("AilifeHub"));
+                        instance = create(context.getApplicationContext());
                     }
                 }
             }
             return instance;
+        }
+
+        static void shutdownForProcess() {
+            synchronized (HubHolder.class) {
+                if (instance != null) {
+                    instance.shutdown();
+                    instance = null;
+                }
+            }
+        }
+
+        static HubController recreateForProcess(Context context) {
+            shutdownForProcess();
+            return get(context);
+        }
+
+        private static HubController create(final Context context) {
+            return new HubController(
+                    new java.io.File(context.getNoBackupFilesDir(), "hub-store"),
+                    20L * 1024 * 1024,
+                    TrackConfig.DEFAULT_EVENT_TTL_DAYS,
+                    new CloudSink.Http("https://track.ailife.example"),
+                    new ReportScheduler.NetworkProbe() {
+                        @Override
+                        public boolean isOnline() {
+                            android.net.ConnectivityManager cm =
+                                    (android.net.ConnectivityManager) context.getSystemService(
+                                            Context.CONNECTIVITY_SERVICE);
+                            if (cm == null) {
+                                return false;
+                            }
+                            android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+                            return info != null && info.isConnected();
+                        }
+                    },
+                    TimeSource.SYSTEM,
+                    new AndroidLogger("AilifeHub"));
         }
     }
 

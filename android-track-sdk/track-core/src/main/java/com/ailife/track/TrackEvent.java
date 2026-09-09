@@ -14,6 +14,8 @@ public class TrackEvent {
     public long eventTime;
     /** Last send timestamp (ms), 0 before first send. */
     public long sentTime;
+    /** SDK version snapshot. */
+    public String sdkVer;
     /** App version snapshot. */
     public String appVer;
     /** OS version snapshot. */

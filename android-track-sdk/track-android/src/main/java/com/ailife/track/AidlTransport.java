@@ -15,32 +15,58 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * AIDL transport (alternative to ProviderTransport; chosen via
- * TrackConfig.ChannelMode.AIDL). Binds the hub ITrackService with
- * BIND_AUTO_CREATE, sends batches one-way and awaits the async result on a
- * one-shot latch with an 8s budget; DEAD_OBJECT handling identical to the
- * provider channel. Never crashes on bind failures; ChannelCore backoff
- * governs rebind attempts.
- */
+/** AIDL alternative to ProviderTransport. */
 public final class AidlTransport implements Transport {
     static final long SEND_TIMEOUT_MS = 8000L;
+    private static final long BIND_RETRY_MS = 2000L;
 
     private final Context context;
     private final ComponentName hubService;
     private final String appKey;
-    private final Object LOCK = new Object();
+    private final boolean encrypted;
+    private final Object lock = new Object();
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            remote = ITrackService.Stub.asInterface(service);
+            binding = false;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            remote = null;
+            binding = false;
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            remote = null;
+            binding = false;
+        }
+
+        @Override
+        public void onNullBinding(ComponentName name) {
+            remote = null;
+            binding = false;
+        }
+    };
 
     private volatile ITrackService remote;
     private volatile boolean binding;
-    private long lastBindAttemptAt = 0;
-    private static final long BIND_RETRY_MS = 2000L;
+    private long lastBindAttemptAt;
 
+    /** Retained for source compatibility; SDK configuration defaults to encryption. */
     public AidlTransport(Context context, String hubPackage, String hubServiceClass,
                          String appKey) {
+        this(context, hubPackage, hubServiceClass, appKey, true);
+    }
+
+    public AidlTransport(Context context, String hubPackage, String hubServiceClass,
+                         String appKey, boolean encrypted) {
         this.context = context.getApplicationContext();
         this.hubService = new ComponentName(hubPackage, hubServiceClass);
         this.appKey = appKey;
+        this.encrypted = encrypted;
     }
 
     private boolean ensureBound() {
@@ -48,7 +74,7 @@ public final class AidlTransport implements Transport {
             return true;
         }
         long now = System.currentTimeMillis();
-        synchronized (LOCK) {
+        synchronized (lock) {
             if (remote != null) {
                 return true;
             }
@@ -59,34 +85,9 @@ public final class AidlTransport implements Transport {
             lastBindAttemptAt = now;
         }
         try {
-            Intent it = new Intent(ITrackService.class.getName());
-            it.setComponent(hubService);
-            boolean ok = context.bindService(it, new ServiceConnection() {
-                @Override
-                public void onServiceConnected(ComponentName name, IBinder service) {
-                    remote = ITrackService.Stub.asInterface(service);
-                    binding = false;
-                }
-
-                @Override
-                public void onServiceDisconnected(ComponentName name) {
-                    // hub process gone: binder proxy invalidated, backoff governs rebind
-                    remote = null;
-                }
-
-                @Override
-                public void onBindingDied(ComponentName name) {
-                    remote = null;
-                    binding = false;
-                }
-
-                @Override
-                public void onNullBinding(ComponentName name) {
-                    remote = null;
-                    binding = false;
-                }
-            }, Context.BIND_AUTO_CREATE);
-            if (!ok) {
+            Intent intent = new Intent(ITrackService.class.getName());
+            intent.setComponent(hubService);
+            if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
                 binding = false;
                 return false;
             }
@@ -103,19 +104,21 @@ public final class AidlTransport implements Transport {
         if (!ensureBound()) {
             return new Result(Code.DEAD_OBJECT, "hub service not bound");
         }
-        final BlockingQueue<int[]> latch = new ArrayBlockingQueue<int[]>(1);
+        final BlockingQueue<CallbackResult> latch =
+                new ArrayBlockingQueue<CallbackResult>(1);
         try {
-            remote.sendBatch(batchId, gzipBatch, signature, ts, new ITrackCallback.Stub() {
-                @Override
-                public void onResult(int code, String detail) {
-                    latch.offer(new int[] {code});
-                }
+            remote.sendBatch(batchId, InboundBatchDecoder.PROTOCOL_VERSION, appKey, encrypted,
+                    gzipBatch, signature, ts, new ITrackCallback.Stub() {
+                        @Override
+                        public void onResult(int code, String detail) {
+                            latch.offer(new CallbackResult(code, detail));
+                        }
 
-                @Override
-                public void onQueryResult(String[] rows) {
-                    // not used by send path
-                }
-            });
+                        @Override
+                        public void onQueryResult(String[] rows) {
+                            // Not used by the send path.
+                        }
+                    });
         } catch (DeadObjectException e) {
             remote = null;
             return new Result(Code.DEAD_OBJECT, "hub died during send");
@@ -124,14 +127,14 @@ public final class AidlTransport implements Transport {
             return new Result(Code.DEAD_OBJECT, e.getMessage());
         }
         try {
-            int[] r = latch.poll(SEND_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (r == null) {
+            CallbackResult result = latch.poll(SEND_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (result == null) {
                 return new Result(Code.TIMEOUT, "no callback within 8s");
             }
-            Code c = Code.fromWire(r[0]);
-            return c == null
-                    ? new Result(Code.RESULT_INVALID, "unknown code " + r[0])
-                    : new Result(c, null);
+            Code code = Code.fromWire(result.code);
+            return code == null || result.code > Code.RESULT_INVALID.wire
+                    ? new Result(Code.DEAD_OBJECT, "unknown code " + result.code)
+                    : new Result(code, result.detail);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Result(Code.DEAD_OBJECT, "interrupted");
@@ -153,9 +156,19 @@ public final class AidlTransport implements Transport {
 
     void unbindForTest() {
         try {
-            context.unbindService(null);
-        } catch (Exception ignore) {
-            // test-only best effort
+            context.unbindService(connection);
+        } catch (IllegalArgumentException ignore) {
+            // Never bound (or was already unbound).
+        }
+    }
+
+    private static final class CallbackResult {
+        final int code;
+        final String detail;
+
+        CallbackResult(int code, String detail) {
+            this.code = code;
+            this.detail = detail;
         }
     }
 }

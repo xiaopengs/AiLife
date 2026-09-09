@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,20 +16,22 @@ import java.util.Map;
 
 /**
  * Journal-style durable FIFO of byte[] records (persist-before-transmit,
- * survives process kill, system freeze and reboot). One append-only journal
- * file per day partition; records are [4B big-endian length][payload].
- * Reads stream from disk so memory stays bounded even with a large backlog.
- * Torn tail frames (kill mid-write) are truncated to the last intact frame.
+ * survives process kill, system freeze and reboot). Records are
+ * [4B big-endian length][payload]. Acknowledgement compaction first writes a
+ * fully synced replacement journal, then atomically renames it into place.
  */
 public final class DiskQueue implements Closeable {
     private static final int MAX_FRAME = 8 * 1024 * 1024;
+    private static final String CANONICAL_SUFFIX = "current.log";
     private final File dir;
     private final long maxBytes;
     private final TimeSource time;
     private final Logger log;
     private final String prefix;
     private long bytes = 0;
+    private int lastOfferEvictedCount = 0;
     private BufferedOutputStream headOut;
+    private File headFile;
 
     public DiskQueue(File dir, long maxBytes, TimeSource time, Logger log, String prefix) {
         this.dir = dir;
@@ -44,7 +47,21 @@ public final class DiskQueue implements Closeable {
         }
     }
 
+    private File canonicalFile() {
+        return new File(dir, prefix + CANONICAL_SUFFIX);
+    }
+
+    /**
+     * Once a canonical journal exists it is the authoritative generation.
+     * Older day partitions are retained only until the successful atomic
+     * replacement and are never read again, which prevents partial multi-file
+     * rewrites from losing or duplicating acknowledged records.
+     */
     private File[] listPartitions() {
+        File canonical = canonicalFile();
+        if (canonical.isFile()) {
+            return new File[] {canonical};
+        }
         File[] files = dir.listFiles();
         if (files == null) {
             return new File[0];
@@ -52,18 +69,56 @@ public final class DiskQueue implements Closeable {
         java.util.Arrays.sort(files);
         List<File> kept = new ArrayList<File>();
         for (File f : files) {
-            if (f.getName().startsWith(prefix)) {
+            String name = f.getName();
+            if (f.isFile() && name.startsWith(prefix) && name.endsWith(".log")) {
                 kept.add(f);
             }
         }
         return kept.toArray(new File[0]);
     }
 
-    /** Append one record; returns false when quota exhausted (record NOT kept). */
+    private File[] listAllPartitionFiles() {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return new File[0];
+        }
+        List<File> kept = new ArrayList<File>();
+        for (File f : files) {
+            String name = f.getName();
+            if (f.isFile() && name.startsWith(prefix) && name.endsWith(".log")) {
+                kept.add(f);
+            }
+        }
+        return kept.toArray(new File[0]);
+    }
+
+    /**
+     * Append one record. At quota, evict oldest records before preserving the
+     * new event. A record larger than the entire quota is rejected unchanged.
+     */
     public synchronized boolean offer(byte[] record) throws IOException {
-        int frame = 4 + record.length;
-        if (bytes + frame > maxBytes) {
+        lastOfferEvictedCount = 0;
+        if (record == null || record.length == 0 || record.length > MAX_FRAME - 4) {
             return false;
+        }
+        int frame = 4 + record.length;
+        if (frame > maxBytes) {
+            return false;
+        }
+        if (bytes + frame > maxBytes) {
+            List<byte[]> all = peek(peekCountTotal());
+            List<byte[]> kept = new ArrayList<byte[]>(all);
+            long keptBytes = frameBytes(kept);
+            int evicted = 0;
+            while (keptBytes + frame > maxBytes && !kept.isEmpty()) {
+                byte[] oldest = kept.remove(0);
+                keptBytes -= 4L + oldest.length;
+                evicted++;
+            }
+            if (keptBytes + frame > maxBytes || !replaceSnapshot(kept)) {
+                return false;
+            }
+            lastOfferEvictedCount = evicted;
         }
         if (headOut == null) {
             openHead();
@@ -75,19 +130,22 @@ public final class DiskQueue implements Closeable {
         return true;
     }
 
-    private void openHead() throws IOException {
-        String name = prefix + (time.nowMs() / 86400000L) + ".log";
-        for (File f : listPartitions()) {
-            if (f.getName().equals(name)) {
-                headOut = new BufferedOutputStream(new FileOutputStream(f, true), 8192);
-                return;
-            }
-        }
-        headOut = new BufferedOutputStream(
-                new FileOutputStream(new File(dir, name), true), 8192);
+    /** Number of records evicted by the immediately preceding offer. */
+    public synchronized int lastOfferEvictedCount() {
+        return lastOfferEvictedCount;
     }
 
-    private static void writeInt(BufferedOutputStream out, int v) throws IOException {
+    private void openHead() throws IOException {
+        File canonical = canonicalFile();
+        if (canonical.isFile()) {
+            headFile = canonical;
+        } else {
+            headFile = new File(dir, prefix + (time.nowMs() / 86400000L) + ".log");
+        }
+        headOut = new BufferedOutputStream(new FileOutputStream(headFile, true), 8192);
+    }
+
+    private static void writeInt(OutputStream out, int v) throws IOException {
         out.write(v >>> 24);
         out.write(v >>> 16);
         out.write(v >>> 8);
@@ -120,7 +178,10 @@ public final class DiskQueue implements Closeable {
      * Corrupt or torn tail frames are truncated away.
      */
     public synchronized List<byte[]> peek(int limit) {
-        List<byte[]> out = new ArrayList<byte[]>(Math.min(limit, 256));
+        List<byte[]> out = new ArrayList<byte[]>(Math.min(Math.max(limit, 0), 256));
+        if (limit <= 0) {
+            return out;
+        }
         for (File f : listPartitions()) {
             if (out.size() >= limit) {
                 break;
@@ -139,15 +200,15 @@ public final class DiskQueue implements Closeable {
             while (out.size() < limit) {
                 int len = readInt(in);
                 if (len < 0) {
-                    break; // clean EOF
+                    break;
                 }
-                if (len <= 4 || len > MAX_FRAME) { // min legal frame: 4B hdr + 1B payload
+                if (len <= 4 || len > MAX_FRAME) {
                     log.w("DiskQueue", "corrupt frame len=" + len + " in " + f.getName());
                     truncate = true;
                     truncateAt = in.count - 4;
                     break;
                 }
-                int payloadLen = len - 4; // frame length includes the 4B header
+                int payloadLen = len - 4;
                 byte[] rec = new byte[payloadLen];
                 int done = 0;
                 boolean torn = false;
@@ -180,8 +241,16 @@ public final class DiskQueue implements Closeable {
     private void truncate(File f, long keepBytes) {
         long sz = f.length();
         if (keepBytes < sz) {
-            try (FileOutputStream fos = new FileOutputStream(f, true)) {
-                fos.getChannel().truncate(keepBytes);
+            try {
+                if (f.equals(headFile)) {
+                    closeHead();
+                }
+                FileOutputStream fos = new FileOutputStream(f, true);
+                try {
+                    fos.getChannel().truncate(keepBytes);
+                } finally {
+                    fos.close();
+                }
                 bytes -= (sz - keepBytes);
                 if (bytes < 0) {
                     bytes = 0;
@@ -209,13 +278,11 @@ public final class DiskQueue implements Closeable {
             return;
         }
         List<byte[]> all = peek(peekCountTotal());
-        Map<String, Integer> skip = new LinkedHashMap<String, Integer>();
-        for (byte[] rec : peek(n)) {
-            String k = key(rec);
-            Integer c = skip.get(k);
-            skip.put(k, c == null ? 1 : c + 1);
+        List<byte[]> kept = new ArrayList<byte[]>();
+        for (int i = n; i < all.size(); i++) {
+            kept.add(all.get(i));
         }
-        removeByHashInner(all, skip);
+        replaceSnapshot(kept);
     }
 
     /** Remove records matching the given list by content hash. */
@@ -230,10 +297,6 @@ public final class DiskQueue implements Closeable {
             Integer c = skip.get(k);
             skip.put(k, c == null ? 1 : c + 1);
         }
-        removeByHashInner(all, skip);
-    }
-
-    private void removeByHashInner(List<byte[]> all, Map<String, Integer> skip) {
         List<byte[]> kept = new ArrayList<byte[]>();
         int removed = 0;
         for (byte[] rec : all) {
@@ -246,23 +309,71 @@ public final class DiskQueue implements Closeable {
                 kept.add(rec);
             }
         }
-        if (removed == 0) {
-            return;
+        if (removed > 0) {
+            replaceSnapshot(kept);
+        }
+    }
+
+    /**
+     * Atomically install an authoritative compacted snapshot. Old journals are
+     * not touched until the temp file is completely written and fsynced. On a
+     * write or rename failure the old generation remains authoritative.
+     */
+    private boolean replaceSnapshot(List<byte[]> records) {
+        File target = canonicalFile();
+        File temp = new File(dir, target.getName() + ".tmp-" + System.nanoTime());
+        try {
+            writeSnapshot(temp, records);
+        } catch (IOException e) {
+            log.e("DiskQueue", "snapshot write failed; keeping original journal", e);
+            if (temp.exists() && !temp.delete()) {
+                log.w("DiskQueue", "temp cleanup failed " + temp);
+            }
+            return false;
         }
         closeHead();
-        for (File f : listPartitions()) {
-            if (!f.delete()) {
-                log.w("DiskQueue", "delete failed " + f);
+        // rename within one directory is an atomic replace on supported local
+        // filesystems. Failure leaves target and its old data untouched.
+        if (!temp.renameTo(target)) {
+            log.w("DiskQueue", "atomic journal replace failed; keeping original journal");
+            if (temp.exists() && !temp.delete()) {
+                log.w("DiskQueue", "temp cleanup failed " + temp);
+            }
+            return false;
+        }
+        for (File old : listAllPartitionFiles()) {
+            if (!old.equals(target) && !old.delete()) {
+                log.w("DiskQueue", "stale journal cleanup failed " + old);
             }
         }
-        bytes = 0;
+        bytes = target.length();
+        return true;
+    }
+
+    private void writeSnapshot(File temp, List<byte[]> records) throws IOException {
+        FileOutputStream fos = new FileOutputStream(temp, false);
         try {
-            for (byte[] rec : kept) {
-                offer(rec);
+            BufferedOutputStream out = new BufferedOutputStream(fos, 8192);
+            for (byte[] rec : records) {
+                if (rec == null || rec.length == 0 || rec.length > MAX_FRAME - 4) {
+                    throw new IOException("invalid record in snapshot");
+                }
+                writeInt(out, 4 + rec.length);
+                out.write(rec);
             }
-        } catch (IOException e) {
-            log.e("DiskQueue", "rewrite failed; some records may be lost", e);
+            out.flush();
+            fos.getFD().sync();
+        } finally {
+            fos.close();
         }
+    }
+
+    private static long frameBytes(List<byte[]> records) {
+        long total = 0;
+        for (byte[] record : records) {
+            total += 4L + record.length;
+        }
+        return total;
     }
 
     private static String key(byte[] rec) {
@@ -273,7 +384,6 @@ public final class DiskQueue implements Closeable {
         int n = 0;
         for (File f : listPartitions()) {
             long sz = f.length();
-            // records average >= 8B frame; count conservatively via peek later
             n += (int) Math.max(1, sz / 8);
         }
         return n + 16;
@@ -282,6 +392,7 @@ public final class DiskQueue implements Closeable {
     private void closeHead() {
         closeQuietly(headOut);
         headOut = null;
+        headFile = null;
     }
 
     public synchronized long sizeBytes() {

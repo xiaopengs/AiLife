@@ -22,6 +22,7 @@ public final class Outbox {
     /** In-memory staging for events since the last journal flush. */
     private final List<StoredEvent> mem = new ArrayList<StoredEvent>(64);
     private long memBytes = 0;
+    private long evictedCount = 0;
 
     public Outbox(TrackConfig config, File dir, TimeSource time, Logger log) {
         this.config = config;
@@ -34,9 +35,10 @@ public final class Outbox {
     public synchronized boolean add(StoredEvent ev) throws IOException {
         byte[] rec = ev.toRecord();
         if (!journal.offer(rec)) {
-            log.w("Outbox", "queue full, dropping oldest-first policy disabled; record dropped");
+            log.w("Outbox", "queue full; event exceeds capacity or compaction failed");
             return false;
         }
+        evictedCount += journal.lastOfferEvictedCount();
         return true;
     }
 
@@ -51,6 +53,11 @@ public final class Outbox {
         int bytes = 0;
         for (byte[] r : raw) {
             StoredEvent ev = StoredEvent.fromRecord(r);
+            if (ev == null) {
+                journal.removeFirstByHash(java.util.Collections.singletonList(r));
+                log.w("Outbox", "malformed stored record dropped");
+                continue;
+            }
             int evSize = ev.size();
             if (evSize > BatchCodec.MAX_EVENT_BYTES) {
                 journal.removeFirst(1);
@@ -111,6 +118,11 @@ public final class Outbox {
 
     public synchronized int pendingCount() {
         return journal.sizeCount();
+    }
+
+    /** Number of oldest records evicted to admit newer records at capacity. */
+    public synchronized long evictedCount() {
+        return evictedCount;
     }
 
     public void close() {

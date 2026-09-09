@@ -25,6 +25,9 @@ public final class BatchCodec {
     public static byte[] encodeEvent(TrackEvent e, String sdkVer, String appVer,
                                      String osVer, String device) {
         ProtoWire.DataOutput out = new ProtoWire.DataOutput();
+        if (e == null) {
+            return out.toByteArray();
+        }
         if (e.id != null) {
             ProtoWire.writeLenField(out, 1, utf8(e.id));
         }
@@ -48,19 +51,7 @@ public final class BatchCodec {
         if (device != null) {
             ProtoWire.writeLenField(out, 9, utf8(device));
         }
-        if (e.properties != null) {
-            for (Map.Entry<String, Object> en : e.properties.entrySet()) {
-                String k = en.getKey();
-                String v = String.valueOf(en.getValue());
-                if (v.length() > MAX_PROP_LEN) {
-                    v = v.substring(0, MAX_PROP_LEN);
-                }
-                ProtoWire.DataOutput kv = new ProtoWire.DataOutput();
-                ProtoWire.writeLenField(kv, 1, utf8(k));
-                ProtoWire.writeLenField(kv, 2, utf8(v));
-                ProtoWire.writeLenField(out, 10, kv.toByteArray());
-            }
-        }
+        writeProperties(out, e.properties);
         return out.toByteArray();
     }
 
@@ -105,6 +96,10 @@ public final class BatchCodec {
                 case 3: e.eventId = r.string(); break;
                 case 4: e.eventTime = r.varint(); break;
                 case 5: e.sentTime = r.varint(); break;
+                case 6: e.sdkVer = r.string(); break;
+                case 7: e.appVer = r.string(); break;
+                case 8: e.osVer = r.string(); break;
+                case 9: e.device = r.string(); break;
                 case 10:
                     parseProp(e, r.bytes());
                     break;
@@ -131,6 +126,45 @@ public final class BatchCodec {
                 e.properties = new java.util.LinkedHashMap<String, Object>();
             }
             e.properties.put(k, v);
+        }
+    }
+
+    /**
+     * Property values originate in application code. A malformed map entry or
+     * an application's throwing {@code toString()} must not escape a public
+     * tracking call; only that property is skipped.
+     */
+    private static void writeProperties(ProtoWire.DataOutput out, Map<String, Object> properties) {
+        if (properties == null) {
+            return;
+        }
+        try {
+            for (Map.Entry<String, Object> en : properties.entrySet()) {
+                try {
+                    if (en == null) {
+                        continue;
+                    }
+                    String k = en.getKey();
+                    if (k == null) {
+                        continue;
+                    }
+                    String v = String.valueOf(en.getValue());
+                    if (v == null) {
+                        continue;
+                    }
+                    if (v.length() > MAX_PROP_LEN) {
+                        v = v.substring(0, MAX_PROP_LEN);
+                    }
+                    ProtoWire.DataOutput kv = new ProtoWire.DataOutput();
+                    ProtoWire.writeLenField(kv, 1, utf8(k));
+                    ProtoWire.writeLenField(kv, 2, utf8(v));
+                    ProtoWire.writeLenField(out, 10, kv.toByteArray());
+                } catch (RuntimeException ignored) {
+                    // Isolate a hostile entry/value and retain the event.
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // A concurrently-mutated or otherwise hostile map is optional.
         }
     }
 

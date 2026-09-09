@@ -53,7 +53,13 @@ public final class StoredEvent {
     }
 
     public static StoredEvent fromRecord(byte[] rec) {
+        if (rec == null || rec.length < 2) {
+            return null;
+        }
         int dkLen = ((rec[0] & 0xFF) << 8) | (rec[1] & 0xFF);
+        if (dkLen > rec.length - 2) {
+            return null;
+        }
         String dk = new String(rec, 2, dkLen, java.nio.charset.StandardCharsets.UTF_8);
         byte[] enc = new byte[rec.length - 2 - dkLen];
         System.arraycopy(rec, 2 + dkLen, enc, 0, enc.length);

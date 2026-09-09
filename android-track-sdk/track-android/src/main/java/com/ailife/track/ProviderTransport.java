@@ -1,15 +1,16 @@
 package com.ailife.track;
 
-import android.content.Context;
 import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Context;
 import android.net.Uri;
-import android.os.Bundle;
-import android.os.RemoteException;
 
 /**
- * Transport implementation over the hub ContentProvider
- * (content://authority). Synchronous insert with an 8s budget mapped to
- * TIMEOUT; DeadObjectException maps to DEAD_OBJECT for ChannelCore.
+ * Transport implementation over the hub ContentProvider.
+ *
+ * <p>The provider contract is a synchronous {@link ContentResolver#insert}
+ * on {@code content://authority/events?ver=1}. Its returned URI has the
+ * result code as its last path segment.</p>
  */
 public final class ProviderTransport implements Transport {
     static final long CALL_TIMEOUT_MS = 8000L;
@@ -17,47 +18,68 @@ public final class ProviderTransport implements Transport {
     private final Context context;
     private final String authority;
     private final String appKey;
+    private final boolean encrypted;
 
+    /** Retained for source compatibility; SDK configuration defaults to encryption. */
     public ProviderTransport(Context context, String authority, String appKey) {
+        this(context, authority, appKey, true);
+    }
+
+    public ProviderTransport(Context context, String authority, String appKey,
+                             boolean encrypted) {
         this.context = context.getApplicationContext();
         this.authority = authority == null || authority.isEmpty()
                 ? TrackConfig.DEFAULT_AUTHORITY : authority;
         this.appKey = appKey;
+        this.encrypted = encrypted;
     }
 
     @Override
     public Result send(final String batchId, final byte[] gzipBatch,
                        final String signature, final long ts) {
         try {
-            ContentResolver resolver = context.getContentResolver();
-            Bundle in = new Bundle();
-            in.putByteArray("blob", gzipBatch);
-            in.putString("sig", signature);
-            in.putLong("ts", ts);
-            in.putString("app_key", appKey);
-            Bundle out = resolver.call(authorityUri().toString(), "insert_events", null, in);
-            if (out == null) {
-                return new Result(Code.TIMEOUT, "provider returned null");
-            }
-            int wire = out.getInt("code", Code.RESULT_INVALID.wire);
-            Code c = Code.fromWire(wire);
-            return c == null
-                    ? new Result(Code.RESULT_INVALID, "unknown code " + wire)
-                    : new Result(c, out.getString("detail"));
+            ContentValues values = new ContentValues();
+            values.put("blob", gzipBatch);
+            values.put("sig", signature);
+            values.put("ts", Long.valueOf(ts));
+            values.put("app_key", appKey);
+            values.put("encrypted", Boolean.valueOf(encrypted));
+
+            Uri response = context.getContentResolver().insert(eventsUri(), values);
+            return parseResponse(response);
+        } catch (SecurityException e) {
+            return new Result(Code.DEAD_OBJECT, "provider permission denied");
         } catch (IllegalArgumentException e) {
-            // unknown authority: hub not installed / wrong authority string
             return new Result(Code.DEAD_OBJECT, "authority missing: " + authority);
-        } catch (Exception e) {
-            // covers RemoteException/DeadObjectException thrown on a real device
-            if (e instanceof RemoteException) {
-                return new Result(Code.DEAD_OBJECT, "hub process gone: "
-                        + e.getMessage());
-            }
+        } catch (RuntimeException e) {
+            // Binder/provider failures must retain the local batch for retry.
             return new Result(Code.DEAD_OBJECT, e.getClass().getSimpleName());
         }
     }
 
-    Uri authorityUri() {
-        return Uri.parse("content://" + authority);
+    Result parseResponse(Uri response) {
+        if (response == null) {
+            return new Result(Code.TIMEOUT, "provider returned null");
+        }
+        try {
+            int wire = Integer.parseInt(response.getLastPathSegment());
+            Code code = Code.fromWire(wire);
+            if (code == null || wire > Code.RESULT_INVALID.wire) {
+                return new Result(Code.DEAD_OBJECT, "unknown provider code " + wire);
+            }
+            return new Result(code, null);
+        } catch (RuntimeException e) {
+            return new Result(Code.DEAD_OBJECT, "malformed provider response");
+        }
+    }
+
+    Uri eventsUri() {
+        return new Uri.Builder()
+                .scheme("content")
+                .authority(authority)
+                .appendPath("events")
+                .appendQueryParameter("ver",
+                        String.valueOf(InboundBatchDecoder.PROTOCOL_VERSION))
+                .build();
     }
 }

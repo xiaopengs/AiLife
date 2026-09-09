@@ -2,6 +2,8 @@ package com.ailife.track;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -17,6 +19,10 @@ public final class TrackEngine {
     private final Logger log;
     private final AtomicLong dropped = new AtomicLong();
     private final AtomicLong sent = new AtomicLong();
+    private final AtomicBoolean drainScheduled = new AtomicBoolean();
+    private final AtomicBoolean drainRequested = new AtomicBoolean();
+    private final AtomicBoolean shutdown = new AtomicBoolean();
+    private final AtomicInteger drainSubmissions = new AtomicInteger();
     private final java.util.concurrent.ExecutorService executor;
     private final String appKey;
     private final boolean encrypt;
@@ -55,14 +61,59 @@ public final class TrackEngine {
         }
     }
 
-    /** Kick the send loop (flush or batch trigger). Never blocks the caller. */
+    /**
+     * Kick the send loop without creating an unbounded executor backlog.
+     * Concurrent/repeated requests collapse into at most one queued worker;
+     * requests racing worker completion are observed before it exits.
+     */
     public void drainAsync() {
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
+        if (shutdown.get()) {
+            return;
+        }
+        drainRequested.set(true);
+        scheduleDrain();
+    }
+
+    private void scheduleDrain() {
+        if (!drainScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            drainSubmissions.incrementAndGet();
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    runDrainWorker();
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // shutdown can race drainAsync; the public API remains no-throw.
+            drainScheduled.set(false);
+        }
+    }
+
+    private void runDrainWorker() {
+        while (true) {
+            drainRequested.set(false);
+            try {
                 drain();
+            } catch (RuntimeException e) {
+                log.e("TrackEngine", "drain crashed", e);
             }
-        });
+            drainScheduled.set(false);
+            // If a trigger arrived while this worker was draining, it may have
+            // intentionally coalesced. Schedule exactly one follow-up pass.
+            if (!shutdown.get() && drainRequested.get()
+                    && drainScheduled.compareAndSet(false, true)) {
+                continue;
+            }
+            return;
+        }
+    }
+
+    /** Package-private test diagnostic: actual executor submissions. */
+    int drainSubmissionCount() {
+        return drainSubmissions.get();
     }
 
     /** Send loop: batches until outbox empty or channel blocks. */
@@ -86,11 +137,11 @@ public final class TrackEngine {
             if (r.code == Transport.Code.RESULT_SUCCEEDED) {
                 outbox.ack(batch.records);
                 sent.addAndGet(batch.count());
-            } else if (channel.shouldDropBatch()) {
-                // INVALID: poisoned batch, quarantine (counted, never retransmit)
+            } else if (channel.shouldDropBatch(r)) {
+                // INVALID: drop this poisoned batch only. ChannelCore is
+                // immediately reusable, so continue with a later legal batch.
                 outbox.ack(batch.records);
                 dropped.addAndGet(batch.count());
-                return;
             } else {
                 // THROTTLED / RETRY_LATER / DEAD_OBJECT / TIMEOUT: keep and wait
                 return;
@@ -109,7 +160,7 @@ public final class TrackEngine {
         s.pendingBytes = outbox.pendingBytes();
         s.health = channel.health();
         s.degradeLevel = channel.degradeLevel();
-        s.droppedCount = dropped.get();
+        s.droppedCount = dropped.get() + outbox.evictedCount();
         s.sentCount = sent.get();
         return s;
     }
@@ -123,7 +174,9 @@ public final class TrackEngine {
     }
 
     public void shutdown() {
-        executor.shutdown();
-        outbox.close();
+        if (shutdown.compareAndSet(false, true)) {
+            executor.shutdown();
+            outbox.close();
+        }
     }
 }

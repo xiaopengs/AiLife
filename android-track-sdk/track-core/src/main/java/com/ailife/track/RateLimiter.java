@@ -22,7 +22,11 @@ public final class RateLimiter {
 
     /** Deterministic variant used by tests and the engine (single clock). */
     public synchronized boolean tryAcquire(long nowMs) {
-        if (nowMs > lastRefillMs) {
+        if (nowMs < lastRefillMs) {
+            // Wall clocks can be corrected backwards. Rebase without adding
+            // tokens so the limiter resumes on the new clock immediately.
+            lastRefillMs = nowMs;
+        } else if (nowMs > lastRefillMs) {
             tokens = Math.min(capacity, tokens + (nowMs - lastRefillMs) * ratePerMs);
             lastRefillMs = nowMs;
         }

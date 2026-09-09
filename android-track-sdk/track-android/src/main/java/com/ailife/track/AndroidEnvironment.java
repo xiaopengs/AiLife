@@ -1,7 +1,6 @@
 package com.ailife.track;
 
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 
 import java.io.File;
@@ -9,8 +8,6 @@ import java.io.File;
 /**
  * Android binding of the Environment SPI. Builds the configured transport
  * (ContentProvider by default, AIDL when TrackConfig.ChannelMode.AIDL).
- * Mirrors androidx.startup-style initialization; no androidx dependency
- * required (plain ContentProvider bootstrap in AilifeTrackInit).
  */
 public final class AndroidEnvironment implements Environment {
 
@@ -72,9 +69,11 @@ public final class AndroidEnvironment implements Environment {
             return new AidlTransport(context,
                     context.getPackageName(), // same-app hub service by default
                     "com.ailife.track.AilifeTrackService",
-                    config.appKey);
+                    config.appKey,
+                    config.encryptPayload);
         }
-        return new ProviderTransport(context, config.providerAuthority, config.appKey);
+        return new ProviderTransport(context, config.providerAuthority, config.appKey,
+                config.encryptPayload);
     }
 
     private static String readVersion(Context ctx) {

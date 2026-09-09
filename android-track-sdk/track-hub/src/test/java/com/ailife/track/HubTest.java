@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,21 +44,20 @@ public class HubTest {
         }
     }
 
-    /** Records batches; configurable failure count before success. */
+    /** Records batches and returns scripted cloud outcomes. */
     private static class FakeSink implements CloudSink {
-        int failures = 0;
         final List<Integer> batchSizes = new ArrayList<Integer>();
+        final List<CloudSink.Result> results = new ArrayList<CloudSink.Result>();
         final AtomicIntegerSent sent = new AtomicIntegerSent();
 
-        public boolean sendBatch(String batchId, byte[] gzipProto, String signature, long ts) {
-            if (failures > 0) {
-                failures--;
-                sent.calls++;
-                return false;
-            }
+        public CloudSink.Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts) {
             sent.calls++;
-            batchSizes.add(1);
-            return true;
+            try {
+                batchSizes.add(BatchCodec.decodeBatch(Gzip.decompress(gzipProto)).size());
+            } catch (IOException e) {
+                throw new AssertionError(e);
+            }
+            return results.isEmpty() ? CloudSink.Result.success() : results.remove(0);
         }
         public String fetchConfig() {
             return null;
@@ -104,9 +104,18 @@ public class HubTest {
     public void duplicateBatchesAreIdempotent() {
         IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
         IngestionPipeline p = new IngestionPipeline(24L * 3600 * 1000, m);
-        assertNotNull(p.accept(ev("d1"), clock.nowMs()));
-        assertNull("duplicate within window rejected", p.accept(ev("d1"), clock.nowMs() + 1000));
-        assertNotNull(p.accept(ev("d1"), clock.nowMs() + 25L * 3600 * 1000)); // window passed
+        IngestionPipeline.Decision first = p.inspect(ev("d1"), clock.nowMs());
+        assertEquals(IngestionPipeline.Status.VALID, first.status());
+        // Before durable persistence commits the key, a retry stays valid.
+        assertEquals(IngestionPipeline.Status.VALID, p.inspect(ev("d1"), clock.nowMs()).status());
+        p.commit(first, clock.nowMs());
+        assertEquals("duplicate within window succeeds idempotently",
+                IngestionPipeline.Status.DUPLICATE,
+                p.inspect(ev("d1"), clock.nowMs() + 1000).status());
+        IngestionPipeline.Decision afterWindow =
+                p.inspect(ev("d1"), clock.nowMs() + 25L * 3600 * 1000);
+        assertEquals(IngestionPipeline.Status.VALID, afterWindow.status());
+        p.commit(afterWindow, clock.nowMs() + 25L * 3600 * 1000);
         assertEquals(2, m.accepted());
         assertEquals(1, m.duplicates());
     }
@@ -117,10 +126,12 @@ public class HubTest {
         IngestionPipeline p = new IngestionPipeline(24L * 3600 * 1000, m);
         TrackEvent future = ev("skew");
         future.eventTime = clock.nowMs() + 6L * 60 * 1000; // > +5min
-        assertNull(p.accept(future, clock.nowMs()));
+        assertEquals(IngestionPipeline.Status.INVALID, p.inspect(future, clock.nowMs()).status());
         TrackEvent nearFuture = ev("skew2");
         nearFuture.eventTime = clock.nowMs() + 4L * 60 * 1000; // within +5min
-        assertNotNull(p.accept(nearFuture, clock.nowMs()));
+        IngestionPipeline.Decision decision = p.inspect(nearFuture, clock.nowMs());
+        assertEquals(IngestionPipeline.Status.VALID, decision.status());
+        p.commit(decision, clock.nowMs());
         assertEquals(1, m.invalid());
         assertEquals(1, m.accepted());
     }
@@ -169,7 +180,9 @@ public class HubTest {
         store.put(e, "s", "a");
         Probe probe = new Probe();
         FakeSink sink = new FakeSink();
-        sink.failures = 4; // first four cloud attempts fail
+        for (int i = 0; i < 4; i++) {
+            sink.results.add(CloudSink.Result.retryable()); // first four attempts fail
+        }
         ReportScheduler s = new ReportScheduler(store, sink, probe, clock, Logger.NOOP, m);
 
         assertTrue(s.shouldReport(clock.nowMs()));
@@ -210,6 +223,154 @@ public class HubTest {
         assertEquals(1, s.drain());
         assertEquals(0, store.count());
         store.close();
+    }
+
+    @Test
+    public void authenticationFailureStopsReportingAndKeepsQueue() {
+        IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
+        HubEventStore store = new HubEventStore(dir, 1 << 20, 3, m, clock, Logger.NOOP);
+        TrackEvent e = ev("auth");
+        e.eventTime = clock.nowMs();
+        assertTrue(store.put(e, "s", "a"));
+        Probe probe = new Probe();
+        FakeSink sink = new FakeSink();
+        sink.results.add(CloudSink.Result.authFailure());
+        ReportScheduler s = new ReportScheduler(store, sink, probe, clock, Logger.NOOP, m);
+
+        assertEquals(0, s.drain());
+        assertTrue(s.isStoppedForAuth());
+        assertEquals(1, store.count());
+        assertFalse(s.shouldReport(clock.nowMs() + 24L * 3600 * 1000));
+        assertEquals(0, s.drain());
+        assertEquals("no retry after 401/403", 1, sink.sent.calls);
+        store.close();
+    }
+
+    @Test
+    public void rateLimitUsesRetryAfterExactlyAndKeepsQueue() {
+        IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
+        HubEventStore store = new HubEventStore(dir, 1 << 20, 3, m, clock, Logger.NOOP);
+        TrackEvent e = ev("rate-limit");
+        e.eventTime = clock.nowMs();
+        assertTrue(store.put(e, "s", "a"));
+        Probe probe = new Probe();
+        FakeSink sink = new FakeSink();
+        sink.results.add(CloudSink.Result.rateLimited(12345));
+        sink.results.add(CloudSink.Result.success());
+        ReportScheduler s = new ReportScheduler(store, sink, probe, clock, Logger.NOOP, m);
+
+        assertEquals(0, s.drain());
+        assertEquals(12345, s.nextAttemptAt() - clock.nowMs());
+        assertEquals(1, store.count());
+        clock.advance(12344);
+        assertEquals(0, s.drain());
+        assertEquals(1, sink.sent.calls);
+        clock.advance(1);
+        assertEquals(1, s.drain());
+        assertEquals(0, store.count());
+        store.close();
+    }
+
+    @Test
+    public void payloadTooLargeShrinks50RecordBatchAndRetainsUnsentRecords() {
+        IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
+        HubEventStore store = new HubEventStore(dir, 1 << 20, 3, m, clock, Logger.NOOP);
+        for (int i = 0; i < ReportScheduler.TRIGGER_COUNT; i++) {
+            TrackEvent e = ev("large-" + i);
+            e.eventTime = clock.nowMs();
+            assertTrue(store.put(e, "s", "a"));
+        }
+        Probe probe = new Probe();
+        FakeSink sink = new FakeSink();
+        sink.results.add(CloudSink.Result.tooLarge());
+        sink.results.add(CloudSink.Result.success());
+        ReportScheduler s = new ReportScheduler(store, sink, probe, clock, Logger.NOOP, m);
+
+        assertEquals(25, s.drain());
+        assertEquals(Arrays.asList(50, 25), sink.batchSizes);
+        assertEquals(25, s.batchLimit());
+        assertEquals("only explicit success deleted the smaller successful prefix", 25, store.count());
+        assertEquals(25, s.drain());
+        assertEquals(0, store.count());
+        store.close();
+    }
+
+    @Test
+    public void batchPersistsValidTailDespiteInvalidRecordAndReplayedDuplicatesSucceed() {
+        HubController hub = new HubController(new File(dir, "hub"), 20L * 1024 * 1024, 3,
+                new FakeSink(), new Probe(), clock, Logger.NOOP);
+        TrackEvent first = ev("batch-first");
+        first.eventTime = clock.nowMs();
+        TrackEvent invalid = ev("bad");
+        invalid.eventId = " ";
+        invalid.eventTime = clock.nowMs();
+        TrackEvent tail = ev("batch-tail");
+        tail.eventTime = clock.nowMs();
+        List<TrackEvent> batch = Arrays.asList(first, invalid, tail);
+
+        assertEquals(Transport.Code.RESULT_SUCCEEDED, hub.ingestBatch(batch));
+        assertEquals(2, hub.queryEvents(0, Long.MAX_VALUE, null, 10).size());
+        assertEquals(Transport.Code.RESULT_SUCCEEDED, hub.ingestBatch(batch));
+        assertEquals("duplicates and invalid replay must not discard accepted tail", 2,
+                hub.queryEvents(0, Long.MAX_VALUE, null, 10).size());
+        assertEquals(2L, hub.metricsSnapshot().get("duplicates").longValue());
+        hub.shutdown();
+    }
+
+    @Test
+    public void partialWriteCommitsOnlyStoredKeysSoRetryCannotLoseTail() {
+        HubController hub = new HubController(new File(dir, "hub"), 20L * 1024 * 1024, 3,
+                new FakeSink(), new Probe(), clock, Logger.NOOP);
+        TrackEvent head = ev("partial-head");
+        head.eventTime = clock.nowMs();
+        TrackEvent rejected = ev("partial-oversize");
+        rejected.eventTime = clock.nowMs();
+        rejected.appVer = repeated('x', BatchCodec.MAX_EVENT_BYTES + 64);
+        TrackEvent tail = ev("partial-tail");
+        tail.eventTime = clock.nowMs();
+        List<TrackEvent> batch = Arrays.asList(head, rejected, tail);
+
+        assertEquals(Transport.Code.RESULT_RETRY_LATER, hub.ingestBatch(batch));
+        assertEquals(Arrays.asList("partial-head", "partial-tail"), eventIds(hub));
+        // The durable prefix/tail are duplicate successes, but the event whose
+        // write failed remains VALID on every replay and is never falsely lost.
+        assertEquals(Transport.Code.RESULT_RETRY_LATER, hub.ingestBatch(batch));
+        assertEquals(Arrays.asList("partial-head", "partial-tail"), eventIds(hub));
+        assertEquals(2L, hub.metricsSnapshot().get("duplicates").longValue());
+        hub.shutdown();
+    }
+
+    @Test
+    public void batchRateBudgetIsReservedAtomicallyBeforeAnyWrite() {
+        HubController hub = new HubController(new File(dir, "hub"), 20L * 1024 * 1024, 3,
+                new FakeSink(), new Probe(), clock, Logger.NOOP);
+        List<TrackEvent> tooMany = new ArrayList<TrackEvent>();
+        for (int i = 0; i < TrackConfig.DEFAULT_RATE_DEPTH + 1; i++) {
+            TrackEvent e = ev("rate-" + i);
+            e.eventTime = clock.nowMs();
+            tooMany.add(e);
+        }
+        assertEquals(Transport.Code.RESULT_THROTTLED, hub.ingestBatch(tooMany));
+        assertEquals("no prefix may be admitted when full reservation fails", 0,
+                hub.queryEvents(0, Long.MAX_VALUE, null, 2000).size());
+        TrackEvent one = ev("after-throttle");
+        one.eventTime = clock.nowMs();
+        assertEquals(Transport.Code.RESULT_SUCCEEDED, hub.ingest(one));
+        hub.shutdown();
+    }
+
+    private static List<String> eventIds(HubController hub) {
+        List<String> ids = new ArrayList<String>();
+        for (TrackEvent event : hub.queryEvents(0, Long.MAX_VALUE, null, 10)) {
+            ids.add(event.eventId);
+        }
+        return ids;
+    }
+
+    private static String repeated(char ch, int count) {
+        char[] chars = new char[count];
+        Arrays.fill(chars, ch);
+        return new String(chars);
     }
 
     @Test
@@ -273,13 +434,16 @@ public class HubTest {
                 new File(dir.getParent(), "hub-" + System.nanoTime()),
                 1 << 20, 3, m, clock, Logger.NOOP);
         for (TrackEvent e : hubIngest) {
-            assertNotNull(pipeline.accept(e, clock.nowMs()));
+            IngestionPipeline.Decision decision = pipeline.inspect(e, clock.nowMs());
+            assertEquals(IngestionPipeline.Status.VALID, decision.status());
             assertTrue(store.put(e, "s", "a"));
+            pipeline.commit(decision, clock.nowMs());
         }
         assertEquals(7, store.count());
         // duplicate replay (client retry after lost ack) is fully idempotent
         for (TrackEvent e : hubIngest) {
-            assertNull(pipeline.accept(e, clock.nowMs()));
+            assertEquals(IngestionPipeline.Status.DUPLICATE,
+                    pipeline.inspect(e, clock.nowMs()).status());
         }
         assertEquals(7, m.duplicates());
         assertEquals(7, store.count());

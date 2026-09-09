@@ -1,0 +1,31 @@
+{
+  "include": [
+    "android-track-sdk/**/*.java",
+    "android-track-sdk/**/*.aidl",
+    "android-track-sdk/**/*.gradle"
+  ],
+  "exclude": [
+    "**/build/**",
+    "**/.gradle/**",
+    "**/generated/**",
+    ".specify/**",
+    "specs/**",
+    "docs/**"
+  ],
+  "rules": [
+    {
+      "path": "android-track-sdk/**/*.java",
+      "merge_system_rule": true,
+      "rule": "Review this Android tracking SDK with three mandatory axes. READABILITY: require intention-revealing names, cohesive methods/classes, explicit invariants, minimal duplication, comments that explain non-obvious decisions, and tests whose names and setup make behavior clear. ARCHITECTURE STABILITY: enforce track-api -> track-core -> track-hub -> track-android dependency direction; flag circular or Android dependencies in pure-Java modules, mutable shared state without lifecycle ownership, public API leakage, protocol/schema incompatibility, unbounded resource growth, and changes that violate the spec/constitution. RELIABILITY: prioritize zero-crash/non-blocking client behavior, at-least-once delivery with deduplication, crash-safe durable writes, corruption recovery, bounded disk/memory/thread use, race/deadlock risks, timeout/backoff correctness, clock-jump handling, explicit error accounting, input bounds, cryptographic correctness, and deterministic cleanup. For every finding, cite an executable failure scenario and identify the missing or inadequate test. Do not report cosmetic preferences that do not affect comprehension, maintainability, architecture, or behavior."
+    },
+    {
+      "path": "android-track-sdk/**/*.aidl",
+      "rule": "Review Binder contracts for backward-compatible evolution, transaction-size bounds, oneway/callback semantics, null and malformed input handling, caller identity/authorization, timeout and binder-death behavior, stable numeric result codes, and accidental main-thread blocking. Cross-check Java callers and services. Require a concrete failure scenario for each finding."
+    },
+    {
+      "path": "android-track-sdk/**/build.gradle",
+      "merge_system_rule": true,
+      "rule": "Review build files for a reproducible Android library build: pinned compatible plugin/Gradle versions, declared repositories, Java 8 bytecode compatibility, minSdk 21 and compileSdk 34, correct module dependency direction, present referenced files, test dependencies, and commands that work from a clean checkout. Flag configuration that only worked in an ad-hoc local environment."
+    }
+  ]
+}

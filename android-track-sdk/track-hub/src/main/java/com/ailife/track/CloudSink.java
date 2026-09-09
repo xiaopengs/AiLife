@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Cloud report sink (contracts/api.md cloud API conventions):
@@ -13,9 +11,36 @@ import java.util.Map;
  * Android hub binds an OkHttp/HttpURLConnection transport at runtime.
  */
 public interface CloudSink {
-    /** @return true when the batch was accepted (2xx). */
-    boolean sendBatch(String batchId, byte[] gzipProto, String signature, long ts)
-            throws IOException;
+    /** Structured upload outcome; only {@link Kind#SUCCESS} permits deletion. */
+    final class Result {
+        public enum Kind {
+            SUCCESS,
+            AUTH_FAILURE,
+            TOO_LARGE,
+            RATE_LIMITED,
+            RETRYABLE
+        }
+
+        public final Kind kind;
+        /** Delay requested by the service for 429, or -1 when unspecified. */
+        public final long retryAfterMs;
+
+        private Result(Kind kind, long retryAfterMs) {
+            this.kind = kind;
+            this.retryAfterMs = retryAfterMs;
+        }
+
+        public static Result success() { return new Result(Kind.SUCCESS, -1); }
+        public static Result authFailure() { return new Result(Kind.AUTH_FAILURE, -1); }
+        public static Result tooLarge() { return new Result(Kind.TOO_LARGE, -1); }
+        public static Result rateLimited(long retryAfterMs) {
+            return new Result(Kind.RATE_LIMITED, retryAfterMs);
+        }
+        public static Result retryable() { return new Result(Kind.RETRYABLE, -1); }
+    }
+
+    /** Never throws for ordinary HTTP or I/O failures; classify them instead. */
+    Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts);
 
     /** Fetch remote config JSON; null on failure (caller keeps current). */
     String fetchConfig();
@@ -29,11 +54,10 @@ public interface CloudSink {
         }
 
         @Override
-        public boolean sendBatch(String batchId, byte[] gzipProto, String signature, long ts)
-                throws IOException {
-            HttpURLConnection conn = (HttpURLConnection)
-                    new URL(endpoint + "/v1/track/batch").openConnection();
+        public Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts) {
+            HttpURLConnection conn = null;
             try {
+                conn = (HttpURLConnection) new URL(endpoint + "/v1/track/batch").openConnection();
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(8000);
@@ -44,9 +68,42 @@ public interface CloudSink {
                 conn.setRequestProperty("X-Ailife-Batch", batchId);
                 conn.getOutputStream().write(gzipProto);
                 int code = conn.getResponseCode();
-                return code >= 200 && code < 300;
+                if (code >= 200 && code < 300) {
+                    return Result.success();
+                }
+                if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
+                    return Result.authFailure();
+                }
+                if (code == HttpURLConnection.HTTP_ENTITY_TOO_LARGE) {
+                    return Result.tooLarge();
+                }
+                if (code == 429) {
+                    return Result.rateLimited(parseRetryAfterMs(conn));
+                }
+                // 5xx and unexpected transport/status failures leave the
+                // queue intact and are retried with the scheduler's ladder.
+                return Result.retryable();
+            } catch (IOException ignored) {
+                return Result.retryable();
             } finally {
-                conn.disconnect();
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
+        }
+
+        private static long parseRetryAfterMs(HttpURLConnection conn) {
+            String value = conn.getHeaderField("Retry-After");
+            if (value == null) {
+                return -1;
+            }
+            value = value.trim();
+            try {
+                long seconds = Long.parseLong(value);
+                return seconds < 0 ? -1 : seconds * 1000L;
+            } catch (NumberFormatException ignored) {
+                long until = conn.getHeaderFieldDate("Retry-After", -1);
+                return until < 0 ? -1 : Math.max(0, until - System.currentTimeMillis());
             }
         }
 

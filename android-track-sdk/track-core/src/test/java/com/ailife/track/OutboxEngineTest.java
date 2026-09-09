@@ -151,7 +151,8 @@ public class OutboxEngineTest {
         en.drainNow();
         assertEquals("invalid batch dropped", 0, en.outbox().pendingCount());
         assertEquals(1, en.status().droppedCount);
-        assertTrue(en.channel().isQuarantined());
+        assertEquals("invalid is batch-local, not a permanent channel state",
+                ChannelCore.State.CONNECTED, en.channel().state());
         en.shutdown();
     }
 

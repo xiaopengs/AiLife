@@ -1,7 +1,9 @@
 // Root build for the ailife Android tracking SDK.
-// Pure-Java modules are verified in CI with javac/JUnit (JDK 8+ compatible
-// source); track-android compiles against the Android SDK (compileSdk 34,
-// minSdk 21) in a real Android environment.
+// AGP 8.7.3 is compatible with Gradle 8.9 and compileSdk 34.
+plugins {
+    id 'com.android.library' version '8.7.3' apply false
+}
+
 allprojects {
     repositories {
         google()

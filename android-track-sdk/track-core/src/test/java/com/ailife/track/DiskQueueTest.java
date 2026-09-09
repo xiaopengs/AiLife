@@ -73,13 +73,15 @@ public class DiskQueueTest {
     }
 
     @Test
-    public void quotaRefusesWhenFull() throws IOException {
+    public void quotaEvictsOldestWhenFull() throws IOException {
         DiskQueue q = new DiskQueue(dir, 31, time, Logger.NOOP, "t-");
         assertTrue(q.offer(rec("aaaa"))); // 4+4=8B
         assertTrue(q.offer(rec("bbbb")));
         assertTrue(q.offer(rec("cccc")));
-        assertFalse(q.offer(rec("dddd"))); // would exceed 32B
+        assertTrue(q.offer(rec("dddd"))); // evicts "aaaa" to admit newest
+        assertEquals(1, q.lastOfferEvictedCount());
         assertEquals(3, q.peek(10).size());
+        assertEquals("bbbb", new String(q.peek(10).get(0)));
         q.close();
     }
 

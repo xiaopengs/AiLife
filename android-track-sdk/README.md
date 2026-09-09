@@ -4,7 +4,7 @@
 
 > **安全默认值：** `APP_KEY` 或 Hub 的 HTTPS `CLOUD_ENDPOINT` 未配置时，数据会保留在本地队列，但 SDK 不会使用默认密钥或占位地址发送。生产接入必须显式配置两项。
 
-完整设计、审查修复记录和验证边界见 [独立设计交付](../docs/design/android-track-sdk/README.md) 与 [代码审查报告](../docs/design/android-track-sdk/review.md)。
+完整设计、审查修复记录和验证边界见 [独立设计交付](docs/design/android-track-sdk/README.md) 与 [代码审查报告](docs/design/android-track-sdk/review.md)。
 
 ## 模块
 
@@ -144,7 +144,7 @@ SDK 的纯 Java 门面在 `Environment` 提供队列目录之前无法创建跨�
 阿里 Open Code Review 的项目级技能在 `.qoder/skills/`，三维门禁规则在 `.opencodereview/rule.json`。使用以下命令复审当前改动：
 
 ```bash
-ocr review --audience agent --background-file docs/design/android-track-sdk/review.md
+ocr review --audience agent --background-file android-track-sdk/docs/design/android-track-sdk/review.md
 ```
 
-详细问题、修复和验证记录见 [review.md](../docs/design/android-track-sdk/review.md)。
+详细问题、修复和验证记录见 [review.md](docs/design/android-track-sdk/review.md)。

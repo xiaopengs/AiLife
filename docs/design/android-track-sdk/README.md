@@ -13,6 +13,7 @@
 | [api.md](api.md) | 契约与接口：SDK API / DataProvider / queryTrack / 云侧接口约定 |
 | [tasks.md](tasks.md) | 任务拆解：7 阶段 30 项任务（含验证方式与里程碑） |
 | [analyze.md](analyze.md) | 一致性核查：概念一致性 + 覆盖矩阵 + 宪法/图纸核查 |
+| [review.md](review.md) | Alibaba Open Code Review 三维审查、修复、构建与测试验证报告 |
 | [architecture.svg](architecture.svg) | 整体架构图（矢量交付版） |
 | [architecture.drawio](architecture.drawio) | 架构图 draw.io 源文件（与 SVG 坐标 1:1，可继续编辑） |
 | [gen_arch_diagram.py](gen_arch_diagram.py) | 图纸生成脚本（同一数据源产出 SVG + drawio） |

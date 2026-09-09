@@ -47,11 +47,14 @@ public class HubTest {
     /** Records batches and returns scripted cloud outcomes. */
     private static class FakeSink implements CloudSink {
         final List<Integer> batchSizes = new ArrayList<Integer>();
+        final List<String> appKeys = new ArrayList<String>();
         final List<CloudSink.Result> results = new ArrayList<CloudSink.Result>();
         final AtomicIntegerSent sent = new AtomicIntegerSent();
 
-        public CloudSink.Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts) {
+        public CloudSink.Result sendBatch(String appKey, String batchId, byte[] gzipProto,
+                                          String signature, long ts) {
             sent.calls++;
+            appKeys.add(appKey);
             try {
                 batchSizes.add(BatchCodec.decodeBatch(Gzip.decompress(gzipProto)).size());
             } catch (IOException e) {
@@ -97,6 +100,7 @@ public class HubTest {
         e.id = id;
         e.dedupKey = id;
         e.eventTime = 100L;
+        e.appKey = "hub-test-app";
         return e;
     }
 
@@ -118,6 +122,19 @@ public class HubTest {
         p.commit(afterWindow, clock.nowMs() + 25L * 3600 * 1000);
         assertEquals(2, m.accepted());
         assertEquals(1, m.duplicates());
+    }
+
+    @Test
+    public void duplicateHitsRefreshTheSlidingDedupWindow() {
+        IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
+        IngestionPipeline p = new IngestionPipeline(1000L, m);
+        IngestionPipeline.Decision first = p.inspect(ev("sliding"), clock.nowMs());
+        p.commit(first, clock.nowMs());
+        assertEquals(IngestionPipeline.Status.DUPLICATE,
+                p.inspect(ev("sliding"), clock.nowMs() + 900L).status());
+        assertEquals("second duplicate extends the 1s window",
+                IngestionPipeline.Status.DUPLICATE,
+                p.inspect(ev("sliding"), clock.nowMs() + 1800L).status());
     }
 
     @Test
@@ -243,6 +260,22 @@ public class HubTest {
         assertFalse(s.shouldReport(clock.nowMs() + 24L * 3600 * 1000));
         assertEquals(0, s.drain());
         assertEquals("no retry after 401/403", 1, sink.sent.calls);
+        store.close();
+    }
+
+    @Test
+    public void schedulerUsesTheAuthenticatedSourceAppKey() {
+        IngestionPipeline.Metrics m = new IngestionPipeline.Metrics();
+        HubEventStore store = new HubEventStore(dir, 1 << 20, 3, m, clock, Logger.NOOP);
+        TrackEvent event = ev("signed");
+        event.eventTime = clock.nowMs();
+        event.appKey = "app-a";
+        assertTrue(store.put(event, "s", "a"));
+        FakeSink sink = new FakeSink();
+        ReportScheduler scheduler = new ReportScheduler(store, sink, new Probe(), clock,
+                Logger.NOOP, m);
+        assertEquals(1, scheduler.drain());
+        assertEquals(java.util.Collections.singletonList("app-a"), sink.appKeys);
         store.close();
     }
 

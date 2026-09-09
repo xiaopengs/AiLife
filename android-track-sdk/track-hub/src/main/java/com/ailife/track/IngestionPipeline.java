@@ -138,6 +138,10 @@ public final class IngestionPipeline {
             commitOrder.remove(key);
             return false;
         }
+        // Each duplicate extends the configured idempotency window. Without
+        // this refresh, a continuous duplicate stream becomes new again at
+        // first-seen + windowMs even though it never stopped arriving.
+        committedKeys.put(key, nowMs);
         commitOrder.remove(key);
         commitOrder.addLast(key);
         return true;

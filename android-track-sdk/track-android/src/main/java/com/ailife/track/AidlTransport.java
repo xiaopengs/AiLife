@@ -141,13 +141,18 @@ public final class AidlTransport implements Transport {
         }
     }
 
-    /** Status probe; null fields mean "unknown" (hub absent). */
-    public int[] getStatus() {
+    /** Status probe; null means "unknown" (hub absent). */
+    @Override
+    public HubStatus getHubStatus() {
         try {
             if (!ensureBound()) {
                 return null;
             }
-            return remote.getStatus();
+            int[] values = remote.getStatus();
+            if (values == null || values.length < 4) {
+                return null;
+            }
+            return new HubStatus(values[2] / 100.0, values[3]);
         } catch (RemoteException e) {
             remote = null;
             return null;

@@ -84,6 +84,25 @@ public final class HubEventStore {
         return out;
     }
 
+    /** Oldest events belonging to one authenticated source application. */
+    public List<TrackEvent> queryEventsForAppKey(String appKey, int limit) {
+        List<TrackEvent> out = new ArrayList<TrackEvent>();
+        if (appKey == null || appKey.isEmpty() || limit <= 0) {
+            return out;
+        }
+        for (byte[] rec : journal.peek(100000)) {
+            TrackEvent event = StoredEvent.fromRecord(rec).decode();
+            if (!appKey.equals(event.appKey)) {
+                continue;
+            }
+            out.add(event);
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
     /** Remove uploaded events (ack by record identity after cloud 2xx). */
     public void removeUploaded(List<TrackEvent> uploaded) {
         List<byte[]> records = new ArrayList<byte[]>();

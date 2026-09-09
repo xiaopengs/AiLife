@@ -106,3 +106,9 @@
 - 不做跨设备数据同步与用户画像计算
 - SDK 与数据中台不做进程保活（拉活由系统/平台策略负责），只负责退避重连
 - 端侧查询的下游消费方（看板/智能体）仅为契约方，其内部实现不在本规格范围
+
+## 当前实现与验收状态（2026-09-09）
+
+本规格描述目标行为，不等同于代码已经通过所有设备级验收。当前实现已通过 71 个 JVM/Android local unit test 和 Debug AAR 构建，且已完成 Alibaba Open Code Review 三维审查；详细证据见 [review.md](review.md)。实现采用帧式 `DiskQueue` 而非 Room，空 `APP_KEY` 或缺少 HTTPS `CLOUD_ENDPOINT` 时仅缓存不发送，`optOut()` 立即生效并清理数据而不采用 10 秒防抖。
+
+正常 Android 接入由 `AilifeTrackInit` 在 Application 前完成初始化。若禁用该 Provider，纯 Java 门面在没有 `Environment` 队列目录时不能承诺“未 init 调用跨重启持久化恢复”。真实设备的跨进程权限、Binder death、杀进程、存储满、网络切换、网关契约及性能验收仍是发布前必须完成的项目。

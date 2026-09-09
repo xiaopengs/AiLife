@@ -118,8 +118,13 @@ public final class TrackEngine {
 
     /** Send loop: batches until outbox empty or channel blocks. */
     void drain() {
+        if (!config.sendEnabled) {
+            log.w("TrackEngine", "appKey missing; retaining events in local cache only");
+            return;
+        }
         int guard = 0;
         while (guard++ < 64) {
+            channel.refreshHealth();
             if (channel.isCacheOnly()) {
                 return; // degraded: stay queued, zero loss
             }

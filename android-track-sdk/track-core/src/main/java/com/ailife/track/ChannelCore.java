@@ -154,6 +154,21 @@ public final class ChannelCore {
         this.degradeLevel = degradeLevel;
     }
 
+    /**
+     * Polls an optional transport probe before a drain. Polling while cache-only
+     * is essential: otherwise a recovered hub could never reopen the channel.
+     */
+    public void refreshHealth() {
+        try {
+            Transport.HubStatus status = transport.getHubStatus();
+            if (status != null) {
+                setHealth(status.health, status.degradeLevel);
+            }
+        } catch (RuntimeException e) {
+            log.w("ChannelCore", "health probe failed; retaining previous status");
+        }
+    }
+
     public double health() {
         return health;
     }

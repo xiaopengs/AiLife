@@ -190,7 +190,7 @@ public class AilifeTrackProvider extends ContentProvider {
                     new java.io.File(context.getNoBackupFilesDir(), "hub-store"),
                     20L * 1024 * 1024,
                     TrackConfig.DEFAULT_EVENT_TTL_DAYS,
-                    new CloudSink.Http("https://track.ailife.example"),
+                    cloudSink(context),
                     new ReportScheduler.NetworkProbe() {
                         @Override
                         public boolean isOnline() {
@@ -206,6 +206,26 @@ public class AilifeTrackProvider extends ContentProvider {
                     },
                     TimeSource.SYSTEM,
                     new AndroidLogger("AilifeHub"));
+        }
+
+        /** Reads a deployment-owned HTTPS endpoint; absent/invalid means cache only. */
+        private static CloudSink cloudSink(Context context) {
+            try {
+                android.content.pm.ApplicationInfo info = context.getPackageManager()
+                        .getApplicationInfo(context.getPackageName(),
+                                android.content.pm.PackageManager.GET_META_DATA);
+                String endpoint = info.metaData == null ? null
+                        : info.metaData.getString("com.ailife.track.CLOUD_ENDPOINT");
+                if (endpoint != null && endpoint.startsWith("https://")) {
+                    return new CloudSink.Http(endpoint.replaceAll("/+$", ""));
+                }
+            } catch (RuntimeException e) {
+                android.util.Log.w("AilifeHub", "unable to read CLOUD_ENDPOINT", e);
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                android.util.Log.w("AilifeHub", "package metadata missing", e);
+            }
+            android.util.Log.w("AilifeHub", "CLOUD_ENDPOINT missing or invalid; retaining data locally");
+            return new CloudSink.Disabled();
         }
     }
 

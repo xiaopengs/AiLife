@@ -40,7 +40,8 @@ public final class AilifeTrack {
 
 ```java
 public final class TrackConfig {
-    final String  appKey;           // 必填，云端鉴权
+    final String  appKey;           // 必填；为空时仅本地缓存，绝不使用默认密钥发送
+    final boolean sendEnabled;      // appKey 有效时为 true
     final String  providerAuthority;// 数据平台进程 Provider authority，默认 com.ailife.dataplatform.track
     final int     flushIntervalMs;  // 合并窗口，默认 5000，范围 [1000, 10000]
     final int     batchCount;       // 批量阈值，默认 50，范围 [10, 200]
@@ -83,13 +84,15 @@ public class AilifeTrackProvider extends ContentProvider {
     @Override
     public @Nullable Uri insert(@NonNull Uri uri, @Nullable ContentValues values);
     // uri: content://com.ailife.dataplatform.track/events?ver=1
-    // values: { "blob" : byte[]  /* gzip(proto Batch) */,
+    // values: { "blob" : byte[]  /* gzip(proto 或 AES-GCM(proto)) */,
     //           "sig"  : String  /* HMAC(appKey + ts) */,
-    //           "ts"   : long    /* 毫秒时间戳，防重放 ±5min */ }
+    //           "ts"   : long    /* 毫秒时间戳，防重放 ±5min */,
+    //           "app_key" : String /* 已认证来源应用 */,
+    //           "encrypted" : boolean }
     // 返回: content://com.ailife.dataplatform.track/events/<RESULT_CODE>
 
     /** query：中台状态（仅授权调用方），用于 SDK 探活与状态展示 */
-    // query(events?status) → MatrixCursor{state, pending, health, degrade_level}
+    // query(status) → MatrixCursor{state, pending, health, degrade_level}
 }
 ```
 
@@ -98,7 +101,7 @@ public class AilifeTrackProvider extends ContentProvider {
 CONNECTED ── DEAD_OBJECT/timeout(8s) ──→ BACKOFF(1s×2 上限30s ±20%抖动) ──探活成功──→ CONNECTED
 CONNECTED ── RESULT_THROTTLED ──→ WAIT(按中台建议退避, 数据保留本地)
 CONNECTED ── RESULT_RETRY_LATER ──→ WAIT(数据保留本地, 下次窗口重试)
-CONNECTED ── RESULT_INVALID ──→ QUARANTINE(落损坏区, 计数, 不重传)
+CONNECTED ── RESULT_INVALID ──→ 当前批次 QUARANTINE(落损坏区、计数、不重传；通道保持可用)
 任意状态 ── 健康度<0.6 ──→ DEGRADED(仅缓存) ──恢复≥0.8持续10min──→ RAMPING(1/4→1/2→全量, 每级5min) ──→ CONNECTED
 ```
 
@@ -132,7 +135,7 @@ Response 401: 鉴权失败 → 中台停止上报并告警（端侧记录）
 Response 413: 单批超限 → 中台拆批
 Response 429: {"retryAfterMs":30000} → 按 Retry-After 退避
 Response 5xx: 云端异常 → 指数退避 30s/1m/5m/30m
-幂等:    云端按 dedupKey 幂等去重（接口约定）；中台侧 90s 窗口去重
+幂等:    Hub 按已验签的 appKey 分组批次，并以该 appKey 写入 X-App-Key 与计算 HMAC；云端按 appKey + dedupKey 幂等去重
 ```
 
 **GET /v1/track/config 响应示例**

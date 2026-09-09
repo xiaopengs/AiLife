@@ -1,6 +1,8 @@
 package com.ailife.track;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Collections;
 
 /** One track event (api model; see contracts/api.md TrackEvent). */
 public class TrackEvent {
@@ -16,6 +18,8 @@ public class TrackEvent {
     public long sentTime;
     /** SDK version snapshot. */
     public String sdkVer;
+    /** Authenticated source application key, stamped by the hub IPC ingress. */
+    public String appKey;
     /** App version snapshot. */
     public String appVer;
     /** OS version snapshot. */
@@ -28,7 +32,20 @@ public class TrackEvent {
     public static TrackEvent of(String eventId, Map<String, Object> properties) {
         TrackEvent e = new TrackEvent();
         e.eventId = eventId;
-        e.properties = properties;
+        e.properties = snapshotProperties(properties);
         return e;
+    }
+
+    private static Map<String, Object> snapshotProperties(Map<String, Object> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return Collections.unmodifiableMap(new LinkedHashMap<String, Object>(properties));
+        } catch (RuntimeException ignored) {
+            // TrackEvent is also used by internal tests and adapters. A hostile
+            // application map must not prevent creation of the event shell.
+            return Collections.emptyMap();
+        }
     }
 }

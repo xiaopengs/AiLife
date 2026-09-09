@@ -3,6 +3,7 @@ package com.ailife.track;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 
 /**
@@ -81,5 +82,32 @@ public final class ProviderTransport implements Transport {
                 .appendQueryParameter("ver",
                         String.valueOf(InboundBatchDecoder.PROTOCOL_VERSION))
                 .build();
+    }
+
+    @Override
+    public HubStatus getHubStatus() {
+        Cursor cursor = null;
+        try {
+            cursor = context.getContentResolver().query(statusUri(), null, null, null, null);
+            if (cursor == null || !cursor.moveToFirst()) {
+                return null;
+            }
+            int healthColumn = cursor.getColumnIndex("health");
+            int levelColumn = cursor.getColumnIndex("degrade_level");
+            if (healthColumn < 0 || levelColumn < 0) {
+                return null;
+            }
+            return new HubStatus(cursor.getDouble(healthColumn), cursor.getInt(levelColumn));
+        } catch (RuntimeException ignored) {
+            return null;
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+    }
+
+    private Uri statusUri() {
+        return new Uri.Builder().scheme("content").authority(authority).appendPath("status").build();
     }
 }

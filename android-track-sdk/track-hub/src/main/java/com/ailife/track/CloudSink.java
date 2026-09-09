@@ -40,10 +40,28 @@ public interface CloudSink {
     }
 
     /** Never throws for ordinary HTTP or I/O failures; classify them instead. */
-    Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts);
+    Result sendBatch(String appKey, String batchId, byte[] gzipProto, String signature, long ts);
 
     /** Fetch remote config JSON; null on failure (caller keeps current). */
     String fetchConfig();
+
+    /**
+     * Explicit safe default for an unconfigured deployment. It preserves the
+     * hub queue and makes the scheduler stop instead of signing requests to a
+     * placeholder endpoint or retrying indefinitely.
+     */
+    final class Disabled implements CloudSink {
+        @Override
+        public Result sendBatch(String appKey, String batchId, byte[] gzipProto,
+                                String signature, long ts) {
+            return Result.authFailure();
+        }
+
+        @Override
+        public String fetchConfig() {
+            return null;
+        }
+    }
 
     /** Simple HttpURLConnection implementation with 8s timeouts. */
     final class Http implements CloudSink {
@@ -54,7 +72,8 @@ public interface CloudSink {
         }
 
         @Override
-        public Result sendBatch(String batchId, byte[] gzipProto, String signature, long ts) {
+        public Result sendBatch(String appKey, String batchId, byte[] gzipProto,
+                                String signature, long ts) {
             HttpURLConnection conn = null;
             try {
                 conn = (HttpURLConnection) new URL(endpoint + "/v1/track/batch").openConnection();
@@ -63,6 +82,7 @@ public interface CloudSink {
                 conn.setReadTimeout(8000);
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/octet-stream");
+                conn.setRequestProperty("X-App-Key", appKey);
                 conn.setRequestProperty("X-Ailife-Sig", signature);
                 conn.setRequestProperty("X-Ailife-Ts", String.valueOf(ts));
                 conn.setRequestProperty("X-Ailife-Batch", batchId);

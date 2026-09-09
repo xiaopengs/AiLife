@@ -12,7 +12,7 @@ import java.util.Map;
  *
  * Event fields (proto): 1 id(str) 2 dedup_key(str) 3 event_id(str)
  * 4 event_time(int64) 5 sent_time(int64) 6 sdk_ver(str) 7 app_ver(str)
- * 8 os_ver(str) 9 device(str) 10 props(map<string,string>).
+ * 8 os_ver(str) 9 device(str) 10 props(map<string,string>) 11 app_key(str).
  */
 public final class BatchCodec {
     public static final int MAX_BATCH_BYTES = 256 * 1024;
@@ -52,6 +52,9 @@ public final class BatchCodec {
             ProtoWire.writeLenField(out, 9, utf8(device));
         }
         writeProperties(out, e.properties);
+        if (e.appKey != null) {
+            ProtoWire.writeLenField(out, 11, utf8(e.appKey));
+        }
         return out.toByteArray();
     }
 
@@ -103,6 +106,7 @@ public final class BatchCodec {
                 case 10:
                     parseProp(e, r.bytes());
                     break;
+                case 11: e.appKey = r.string(); break;
                 default:
                     break;
             }

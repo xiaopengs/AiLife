@@ -1,41 +1,58 @@
-# Android 端侧埋点 SDK（ailife-track-sdk）实现
+# Android 端侧埋点 SDK
 
-本目录是 [设计方案](../docs/design/android-track-sdk/README.md) 的完整 Java 实现：业务 App 集成 SDK 采集埋点，
-经 **ContentProvider 或 AIDL 两种可选通道** 跨进程送达端侧数据中台（hub 进程），中台本地存储后按策略
-上报云侧。全链路 **先落盘再发送 + dedupKey 幂等**，在进程被杀、Android 冻结、重启、hub 不在线等场景下
-保证 **数据不丢、不重（恰好一次效果）**。
+`android-track-sdk` 是端侧数据中台方案的 Java 实现。业务进程通过 `AilifeTrack` 采集事件，先写本进程持久化队列，再经 **ContentProvider（默认）或 AIDL** 发送至 Hub 进程。Hub 完成校验、去重、本地持久化、健康计算和云端上报。设计采用 **至少一次投递 + `dedupKey` 幂等**；传输超时、进程死亡和重试可能产生重复投递，因此“恰好一次效果”取决于 Hub 和网关两侧的去重。
 
-## 模块结构
+> **安全默认值：** `APP_KEY` 或 Hub 的 HTTPS `CLOUD_ENDPOINT` 未配置时，数据会保留在本地队列，但 SDK 不会使用默认密钥或占位地址发送。生产接入必须显式配置两项。
 
-| 模块 | 内容 | 依赖 |
-|---|---|---|
-| `track-core` | 纯 Java 可测试内核：DiskQueue 落盘队列、Outbox 发件箱、ChannelCore 通道状态机、BatchCodec(Proto+Gzip)、Signature(HMAC/AES-GCM)、Deduplicator、RateLimiter、BackoffPolicy、TrackEngine | 无 |
-| `track-api` | 业务侧门面 `AilifeTrack`（track/trackList/flush/setUserProfile/optOut/optIn/getStatus）+ `Environment` SPI | track-core |
-| `track-hub` | 端侧数据中台引擎：IngestionPipeline（校验/去重/限流）、HubEventStore（TTL/配额）、ReportScheduler（批量上报+重试阶梯）、HealthManager（健康分与降级）、CloudSink | track-core |
-| `track-android` | Android 绑定层：`AilifeTrackProvider`（ContentProvider 通道）、`AilifeTrackService`+AIDL（AIDL 通道）、`ProviderTransport`/`AidlTransport`、`AilifeTrackInit`（androidx.startup 式无依赖引导）、`AndroidEnvironment` | 其余三个模块 |
+完整设计、审查修复记录和验证边界见 [独立设计交付](../docs/design/android-track-sdk/README.md) 与 [代码审查报告](../docs/design/android-track-sdk/review.md)。
 
-数据流：`业务代码 → AilifeTrack.track() → TrackEngine（内存队列，P95 7µs）→ 单线程异步 drain →
-DiskQueue 落盘 → Outbox 组批（Proto + Gzip + HMAC 签名，可选 AES-GCM 加密）→ Provider/AIDL 通道 →
-hub IngestionPipeline（校验+去重+限流）→ HubEventStore 落盘 → ReportScheduler 批量上报云侧（失败重试阶梯 30s/1m/5m/30m）。
+## 模块
 
-## 快速接入
+| 模块 | 职责 | 依赖 |
+| --- | --- | --- |
+| `track-core` | Java 8 内核：帧式磁盘队列、Outbox、状态机、protobuf wire 编解码、gzip、HMAC、AES-GCM、退避和限流 | 无 Android 依赖 |
+| `track-api` | 业务门面 `AilifeTrack`、输入隔离、全局属性快照、退出权状态 | `track-core` |
+| `track-hub` | Hub 校验/去重/存储、上报调度、HTTP 结果分类、健康降级 | `track-core` |
+| `track-android` | Provider/AIDL 通道、Manifest、自动初始化、Android 环境适配 | 其他三个模块 |
 
-### 1. 数据中台 App（hub 侧，包名约定 `com.ailife.dataplatform`）
+事件路径如下：
+
+```text
+业务代码 → AilifeTrack → Outbox / DiskQueue（先落盘）
+       → ChannelCore → Provider 或 AIDL（gzip + HMAC，按配置 AES-GCM）
+       → Hub 校验 / 去重 / HubEventStore（先落盘）
+       → ReportScheduler → HTTPS 网关
+```
+
+## 接入配置
+
+### 1. Hub 应用
+
+Hub 应用承载 `AilifeTrackProvider` 和可选的 `AilifeTrackService`。其与业务应用必须由**相同签名证书**签名，因为写入权限为 signature 级。`CLOUD_ENDPOINT` 必须为 HTTPS 地址；未提供或不合法时 `CloudSink.Disabled` 保留 Hub 队列并停止发送。
 
 ```xml
-<manifest ...>
-    <application ...>
-        <!-- 端侧数据中台：独立进程运行，Provider 通道入口 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission
+        android:name="com.ailife.permission.TRACK_WRITE"
+        android:protectionLevel="signature" />
+
+    <application>
+        <meta-data
+            android:name="com.ailife.track.CLOUD_ENDPOINT"
+            android:value="https://track.example.com" />
+
         <provider
             android:name="com.ailife.track.AilifeTrackProvider"
             android:authorities="com.ailife.dataplatform.track"
             android:exported="true"
+            android:readPermission="com.ailife.permission.TRACK_WRITE"
+            android:writePermission="com.ailife.permission.TRACK_WRITE"
             android:process=":hub" />
 
-        <!-- 可选：AIDL 通道入口（业务 App 配置 CHANNEL=aidl 时使用） -->
         <service
             android:name="com.ailife.track.AilifeTrackService"
             android:exported="true"
+            android:permission="com.ailife.permission.TRACK_WRITE"
             android:process=":hub">
             <intent-filter>
                 <action android:name="com.ailife.track.aidl.ITrackService" />
@@ -45,95 +62,89 @@ hub IngestionPipeline（校验+去重+限流）→ HubEventStore 落盘 → Repo
 </manifest>
 ```
 
-hub 侧无需初始化代码：`AilifeTrackProvider.onCreate()` 内部构建 `HubController` 单例；
-`AilifeTrackInit` 检测到 hub 包名时跳过采集初始化，避免自采自报。
+### 2. 业务应用
 
-### 2. 业务 App（集成方）
+业务应用声明写权限、配置不可为空的 `APP_KEY`，并注册非导出的初始化 Provider。初始化 Provider 在 Application 代码执行前创建 SDK；因此正常 Android 接入不会出现未初始化的采集窗口。
 
 ```xml
-<manifest ...>
-    <application ...>
-        <!-- 自动初始化（androidx.startup 模式，无 androidx 依赖），在 Application 之前就绪 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="com.ailife.permission.TRACK_WRITE" />
+
+    <application>
         <provider
             android:name="com.ailife.track.AilifeTrackInit"
             android:authorities="${applicationId}.ailife-track-init"
-            android:exported="false" />
+            android:exported="false"
+            android:initOrder="100" />
 
-        <!-- 通道选择：provider（默认）或 aidl -->
-        <meta-data android:name="com.ailife.track.APP_KEY"  android:value="your-appkey" />
-        <meta-data android:name="com.ailife.track.CHANNEL"  android:value="provider" />
-        <!-- 可选配置（均有校验，越界回落默认值并记录 validationNotes）：
-        <meta-data android:name="com.ailife.track.FLUSH_INTERVAL_MS" android:value="5000" />
-        <meta-data android:name="com.ailife.track.BATCH_COUNT"       android:value="50" />
-        <meta-data android:name="com.ailife.track.TTL_DAYS"          android:value="3" />
-        <meta-data android:name="com.ailife.track.QUEUE_MB"          android:value="20" />
-        <meta-data android:name="com.ailife.track.ENCRYPT"           android:value="true" />
-        -->
+        <meta-data
+            android:name="com.ailife.track.APP_KEY"
+            android:value="replace-with-server-issued-app-key" />
+        <meta-data
+            android:name="com.ailife.track.CHANNEL"
+            android:value="provider" />
+        <meta-data
+            android:name="com.ailife.track.ENCRYPT"
+            android:value="true" />
     </application>
 </manifest>
 ```
 
-业务代码只需一行：
+可选的 `CHANNEL` 值为 `provider`（默认）和 `aidl`。可选配置还包括 `FLUSH_INTERVAL_MS`、`BATCH_COUNT`、`TTL_DAYS` 和 `QUEUE_MB`。非法边界值会回退安全默认值，并记录在 `TrackConfig.validationNotes` 中。空 `APP_KEY` 不会被替换为可预测字符串，而是进入本地缓存模式。
+
+### 3. 业务调用
 
 ```java
 AilifeTrack.track("page_view", Collections.singletonMap("page", "home"));
-AilifeTrack.trackList(events);          // 批量
-AilifeTrack.flush();                    // 立即触发一次上报
-AilifeTrack.optOut();                   // 10s 防抖退出采集（合规）
-AilifeTrack.getStatus();                // pending/健康分/降级等级
+AilifeTrack.trackList(events);
+AilifeTrack.flush();
+AilifeTrack.optOut(); // 立即停止采集、清队列并持久化退出状态
+AilifeTrack.optIn();  // 只采集之后的新事件
+TrackStatus status = AilifeTrack.getStatus();
 ```
 
-### 3. Gradle
+公共入口隔离业务输入异常。属性会在入队前进行防御性快照；异常迭代器、非字符串 key、NaN/Infinity 和抛异常的 `toString()` 仅导致该属性被跳过和计数，不会令事件主体抛出异常。`eventId` 为空、空白或超过 128 字符时会被拒绝并计数。
+
+## 传输与可靠性语义
+
+| 场景 | 行为 |
+| --- | --- |
+| Provider/AIDL 成功 | Hub 已接受并持久化后返回 `RESULT_SUCCEEDED`，发送端才确认删除本地记录。 |
+| `RESULT_THROTTLED` / `RESULT_RETRY_LATER` | 发送端保留原批次并退避。 |
+| `RESULT_INVALID` | 仅隔离并计数当前坏批次；后续合法批次仍可发送。 |
+| Binder 死亡、异常或超时 | 发送端保留数据，按 1s 指数退避至 30s。 |
+| 业务或 Hub 队列满 | 淘汰最旧记录以保留最新记录，并累加可查询的淘汰计数。 |
+| 磁盘写入中断 | 下次读取截断断尾帧；确认压缩使用临时文件、`fsync` 和同目录替换。 |
+| Hub 健康度低于 0.6 | 发送端通过 Provider/AIDL 状态探测进入仅缓存；定时 drain 仍探测健康度以恢复发送。 |
+| 云端 401/403 | Hub 停止上报并保留队列。 |
+| 云端 429 / 413 / 5xx | 分别按 `Retry-After`、缩批、30s/1m/5m/30m 阶梯处理；仅 2xx 删除 Hub 记录。 |
+
+IPC 入口在验签后将已认证的 `appKey` 写入事件的 Hub 内部持久化元数据。Hub 按来源应用分组，以该密钥生成上游 HMAC 并设置 `X-App-Key`。业务 payload 中同名字段不被信任。
+
+## 构建与验证
+
+项目已提交 Gradle 8.9 Wrapper，`track-android` 固定 Android Gradle Plugin 8.7.3、compileSdk 34 和 minSdk 21；所有模块保持 Java 8 字节码目标。
 
 ```bash
-./gradlew :track-android:assembleRelease   # AAR（含 AIDL）
-./gradlew test                             # 全部单元测试
+cd android-track-sdk
+./gradlew --no-daemon clean test
+./gradlew --no-daemon :track-android:assembleDebug
 ```
 
-`settings.gradle` 已包含四个模块；`track-android` 为 `com.android.library`（namespace `com.ailife.track`，
-minSdk 21，compileSdk 34），其余为纯 Java 库（source/target 8，JDK 21 编译验证通过）。
+本次验证在 JDK 21、Android API 34 和 Build Tools 34.0.0 下完成：**71 个自动化测试通过，0 failures，0 errors**，并成功产出 `track-android-debug.aar`。JDK 21 会对 Java 8 source/target 打出弃用警告；该警告不影响当前构建结果。
 
-## 数据不丢设计（稳定性/边界/异常矩阵）
+## 已知边界
 
-核心机制：**发送端先落盘（DiskQueue + Outbox），hub 侧先落盘（HubEventStore）再上报，两端以
-dedupKey 幂等去重 ⇒ at-least-once 投递 + 恰好一次效果**。
+SDK 的纯 Java 门面在 `Environment` 提供队列目录之前无法创建跨进程重启后仍可恢复的持久化队列。Android 正常接入通过 `AilifeTrackInit` 在 Application 之前初始化来避免该窗口；若业务显式禁用初始化 Provider，则必须接受未初始化调用不具备跨重启持久化保证。
 
-| 场景 | 机制 | 验证测试 |
-|---|---|---|
-| 业务进程被杀 | 事件先写 DiskQueue（帧校验 + 断尾截断），重启后从磁盘回放重发 | `OutboxEngineTest.processKillThenRestartZeroLoss` |
-| hub 进程被杀 / binder 死亡 | `DEAD_OBJECT` → 保留数据退避重试（1s×2 封顶 30s ±20% 抖动） | `ChannelCoreTest`、`OutboxEngineTest.deadObjectKeepsDataForRetry` |
-| 通道限流（RESULT_THROTTLED） | 不丢不删，退避后重发 | `throttledRetryLaterKeepsData` |
-| 数据非法（RESULT_INVALID） | 隔离区（quarantine）+ 计数，不阻塞后续批次 | `invalidBatchQuarantinedNotLost` |
-| Android 冻结（时钟大幅跳跃） | 基于 TimeSource 抽象，解冻后窗口/退避立即恢复正常 | `freezeResumeSendsPending` |
-| 设备离线 | hub ReportScheduler hold 住数据，网络恢复后按阶梯上报 | `HubTest.offlineHoldsThenDrains` |
-| 云端上报失败 | 重试阶梯 30s/1m/5m/30m，期间数据留在 HubEventStore | `retryLadderBacksOffThenSucceeds` |
-| hub 容量超限 / TTL 过期 | 配额淘汰与 TTL 清扫均**计数上报**，可审计不静默丢失 | `quotaEvictionCounted`、`ttlSweepEvictsExpired` |
-| 重复投递（超时重发） | hub 24h 去重窗口（20 万 LRU），重复批次计 duplicate | `dedupIsIdempotent` |
-| 单条超大 / 属性超长 | MAX_PROP_LEN 截断入库，单事件 1MB 上限，超限计数 | `oversizePropIsTruncatedNotStored` |
-| 磁盘队列损坏（写一半掉电） | 帧长度校验 + 断尾截断，坏帧之后数据仍可读 | `DiskQueueTest.tornTailTruncatedOnRead` |
-| 队列配额打满 | 拒绝新事件并计数（保老数据），不覆盖 | `DiskQueueTest.quotaRefusedWhenFull` |
-| 发送预算超时 | 每批次 8s 预算，超时判 TIMEOUT 走退避 | `ChannelCoreTest.timeoutGoesToBackoff` |
-| 健康度持续劣化 | 健康分 < 0.6 降级 cache-only；≥0.8 持续 10 分钟按 1/4→1/2→1 爬坡恢复 | `healthDegradesToCacheOnly`、`healthRecoversByRamp` |
-| 配置非法 / 时钟偏移 | 越界回落默认值 + validationNotes；ingest 拒绝超 ±5min 时钟偏移 | `TrackConfigTest`、`HubTest.clockSkewBeyondFiveMinutesRejected` |
-| 合规退出 | optOut 10s 防抖，退出后不采集不入队 | `AilifeTrack`（E12） |
+当前验证覆盖 JVM、Android local unit test 和 Debug AAR 打包。生产发布前仍应在真机或设备农场执行跨签名权限、Binder death、杀业务/Hub 进程、磁盘满、网络切换、网关状态矩阵和端到端幂等演练。
 
-## 验证结果（JDK 21，JUnit 4）
+## 代码审查
 
-```
-track-core : OK (23 tests)   DiskQueue 9 + Outbox/Engine 9 + ChannelCore 5
-track-hub  : OK (8 tests)    去重/时钟/配额/TTL/重试阶梯/离线/健康降级恢复/端到端零丢失
-track-api  : OK (7 tests)    配置校验/通道可选/状态/Proto 边界/限流
-合计 38 个测试全部通过
+阿里 Open Code Review 的项目级技能在 `.qoder/skills/`，三维门禁规则在 `.opencodereview/rule.json`。使用以下命令复审当前改动：
+
+```bash
+ocr review --audience agent --background-file docs/design/android-track-sdk/review.md
 ```
 
-性能门禁（实测）：入队 P50 2µs / P95 7µs（预算 2ms）；编码 1µs/事件；hub ingest P95 1µs（预算 10ms）。
-
-说明：沙箱无 android.jar，`track-android` 通过自建 stub jar 完成类型检查（保证 API/调用正确），
-在真实 Android 构建环境（AGP + compileSdk 34）下可直接编译；`build.gradle` 已就位。
-
-## 关键类索引
-
-- 发送端内核：`track-core/.../TrackEngine.java`（单 daemon 线程）、`Outbox.java`、`DiskQueue.java`、`ChannelCore.java`
-- 通道实现：`track-android/.../ProviderTransport.java`（ContentResolver.call）、`AidlTransport.java`（bindService + 8s latch）
-- 中台引擎：`track-hub/.../HubController.java`（5s tick）、`IngestionPipeline.java`、`ReportScheduler.java`、`HealthManager.java`
-- AIDL 契约：`track-android/src/main/aidl/com/ailife/track/aidl/ITrackService.aidl`、`ITrackCallback.aidl`
+详细问题、修复和验证记录见 [review.md](../docs/design/android-track-sdk/review.md)。

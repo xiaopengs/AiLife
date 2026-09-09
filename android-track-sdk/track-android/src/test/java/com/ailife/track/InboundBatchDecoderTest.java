@@ -22,6 +22,7 @@ public class InboundBatchDecoderTest {
         assertTrue(result.isValid());
         assertEquals(1, result.events.size());
         assertEquals("open", result.events.get(0).eventId);
+        assertEquals(APP_KEY, result.events.get(0).appKey);
     }
 
     @Test

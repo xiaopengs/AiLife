@@ -1,6 +1,7 @@
 package com.ailife.track;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Map;
@@ -55,9 +56,10 @@ public class TrackConfigTest {
     }
 
     @Test
-    public void emptyAppKeyFallsBack() {
+    public void emptyAppKeyDisablesSendingInsteadOfUsingPredictableCredential() {
         TrackConfig c = TrackConfig.builder("  ").build();
-        assertEquals("default-appkey", c.appKey);
+        assertEquals("", c.appKey);
+        assertFalse(c.sendEnabled);
         assertTrue(c.validationNotes.contains("appKey"));
     }
 

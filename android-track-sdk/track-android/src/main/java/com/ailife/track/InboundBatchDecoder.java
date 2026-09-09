@@ -54,7 +54,11 @@ final class InboundBatchDecoder {
             }
             List<TrackEvent> events = new ArrayList<TrackEvent>();
             for (byte[] raw : BatchCodec.decodeBatch(proto)) {
-                events.add(BatchCodec.decodeEvent(raw));
+                TrackEvent event = BatchCodec.decodeEvent(raw);
+                // appKey was authenticated by the outer IPC signature and must
+                // never be trusted from the business-controlled event payload.
+                event.appKey = appKey;
+                events.add(event);
             }
             return DecodedBatch.valid(events);
         } catch (IOException e) {

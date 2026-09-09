@@ -273,4 +273,57 @@ public class CoreHardeningTest {
         assertTrue("rollback must not freeze refill until the old clock catches up",
                 limiter.tryAcquire(901L));
     }
+
+    @Test
+    public void missingAppKeyRetainsLocalDataWithoutCallingTransport() {
+        final int[] calls = new int[1];
+        Transport transport = new Transport() {
+            @Override public Result send(String id, byte[] payload, String sig, long ts) {
+                calls[0]++;
+                return Result.ok();
+            }
+        };
+        TrackConfig config = TrackConfig.builder(" ").build();
+        TrackEngine engine = new TrackEngine(config, dir, transport, new FixedTime(), Logger.NOOP);
+        assertTrue(engine.enqueue(event("local-only")));
+        engine.drainNow();
+        assertEquals(0, calls[0]);
+        assertEquals(1, engine.outbox().pendingCount());
+        engine.shutdown();
+    }
+
+    @Test
+    public void eventFactorySnapshotsPropertiesBeforeCallerMutation() {
+        Map<String, Object> properties = new LinkedHashMap<String, Object>();
+        properties.put("screen", "home");
+        TrackEvent event = TrackEvent.of("open", properties);
+        properties.put("screen", "detail");
+        assertEquals("home", event.properties.get("screen"));
+    }
+
+    @Test
+    public void cacheOnlyChannelPollsHealthAndResumesWhenHubRecovers() {
+        final boolean[] healthy = new boolean[] {false};
+        final int[] sends = new int[1];
+        Transport transport = new Transport() {
+            @Override public Result send(String id, byte[] payload, String sig, long ts) {
+                sends[0]++;
+                return Result.ok();
+            }
+
+            @Override public HubStatus getHubStatus() {
+                return healthy[0] ? new HubStatus(1.0, 0) : new HubStatus(0.5, 2);
+            }
+        };
+        TrackEngine engine = new TrackEngine(TrackConfig.builder("app").build(), dir,
+                transport, new FixedTime(), Logger.NOOP);
+        assertTrue(engine.enqueue(event("recover")));
+        engine.drainNow();
+        assertEquals(0, sends[0]);
+        healthy[0] = true;
+        engine.drainNow();
+        assertEquals(1, sends[0]);
+        assertEquals(0, engine.outbox().pendingCount());
+        engine.shutdown();
+    }
 }

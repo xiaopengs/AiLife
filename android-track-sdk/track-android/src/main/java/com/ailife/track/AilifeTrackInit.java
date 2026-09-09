@@ -76,9 +76,6 @@ public class AilifeTrackInit extends ContentProvider {
                     return new ApplicationConfig(defaultConfig(ctx));
                 }
                 String appKey = md.getString("com.ailife.track.APP_KEY");
-                if (appKey == null || appKey.trim().isEmpty()) {
-                    appKey = ctx.getPackageName();
-                }
                 TrackConfig.Builder b = TrackConfig.builder(appKey);
                 String mode = md.getString("com.ailife.track.CHANNEL");
                 if ("aidl".equalsIgnoreCase(mode)) {
@@ -106,7 +103,9 @@ public class AilifeTrackInit extends ContentProvider {
         }
 
         private static TrackConfig defaultConfig(Context ctx) {
-            return TrackConfig.builder(ctx.getPackageName()).build();
+            // A package name is not a credential. Missing metadata intentionally
+            // creates a local-cache-only SDK until the integrator configures APP_KEY.
+            return TrackConfig.builder(null).build();
         }
     }
 }

@@ -30,6 +30,8 @@ public final class TrackConfig {
     public enum ChannelMode { PROVIDER, AIDL }
 
     public final String appKey;
+    /** False when no credential was supplied: events may be cached but are never signed or sent. */
+    public final boolean sendEnabled;
     public final String providerAuthority;
     public final ChannelMode channelMode;
     public final long flushIntervalMs;
@@ -48,6 +50,7 @@ public final class TrackConfig {
 
     private TrackConfig(Builder b) {
         this.appKey = b.appKey;
+        this.sendEnabled = b.sendEnabled;
         this.providerAuthority = b.providerAuthority;
         this.channelMode = b.channelMode;
         this.flushIntervalMs = b.flushIntervalMs;
@@ -70,6 +73,7 @@ public final class TrackConfig {
 
     public static final class Builder {
         private final String appKey;
+        private final boolean sendEnabled;
         private final StringBuilder notes = new StringBuilder();
         private String providerAuthority = DEFAULT_AUTHORITY;
         private ChannelMode channelMode = ChannelMode.PROVIDER;
@@ -87,10 +91,12 @@ public final class TrackConfig {
 
         public Builder(String appKey) {
             if (appKey == null || appKey.trim().isEmpty()) {
-                this.appKey = "default-appkey";
-                this.notes.append("appKey empty -> default-appkey; ");
+                this.appKey = "";
+                this.sendEnabled = false;
+                this.notes.append("appKey empty -> local cache only; ");
             } else {
                 this.appKey = appKey.trim();
+                this.sendEnabled = true;
             }
         }
 

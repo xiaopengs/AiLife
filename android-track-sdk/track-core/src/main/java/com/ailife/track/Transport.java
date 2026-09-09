@@ -60,4 +60,20 @@ public interface Transport {
      * Implementations must respect an 8s budget (TIMEOUT after that).
      */
     Result send(String batchId, byte[] gzipBatch, String signature, long ts);
+
+    /** Optional lightweight Hub health probe; null means retain the last value. */
+    default HubStatus getHubStatus() {
+        return null;
+    }
+
+    /** Snapshot returned by Provider/AIDL status probes. */
+    final class HubStatus {
+        public final double health;
+        public final int degradeLevel;
+
+        public HubStatus(double health, int degradeLevel) {
+            this.health = health;
+            this.degradeLevel = degradeLevel;
+        }
+    }
 }

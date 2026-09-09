@@ -71,7 +71,19 @@ public final class ReportScheduler {
         // batch. A single-record 413 is retained and backed off rather than
         // being deleted or spun forever.
         while (true) {
-            List<TrackEvent> events = store.queryEvents(0, Long.MAX_VALUE, null, batchLimit);
+            List<TrackEvent> oldest = store.queryEvents(0, Long.MAX_VALUE, null, 1);
+            if (oldest.isEmpty()) {
+                return 0;
+            }
+            String appKey = oldest.get(0).appKey;
+            if (appKey == null || appKey.isEmpty()) {
+                metrics.incSendFailure();
+                stoppedForAuth = true;
+                nextAttemptAt = Long.MAX_VALUE;
+                log.w("ReportScheduler", "source app key missing; reporting stopped");
+                return 0;
+            }
+            List<TrackEvent> events = store.queryEventsForAppKey(appKey, batchLimit);
             if (events.isEmpty()) {
                 return 0;
             }
@@ -91,8 +103,7 @@ public final class ReportScheduler {
                 return 0;
             }
             long ts = time.nowMs();
-            String appKey = "default-appkey";
-            CloudSink.Result result = sink.sendBatch(batchId, gz,
+            CloudSink.Result result = sink.sendBatch(appKey, batchId, gz,
                     Signature.signBatch(appKey, ts, gz), ts);
             if (result == null) {
                 // Defensively classify a broken custom sink as retryable.

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Image To PPT Replica"
+  short_description: "1:1 复刻图片为可编辑 PPT 页面"
+policy:
+  allow_implicit_invocation: false

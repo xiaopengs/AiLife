@@ -1,10 +1,8 @@
 # 需求与方案变更记录
 
-## 2026-10-10 — 安装 image-to-ppt-replica 技能并纳入技能目录
+## 2026-10-12 — README 补充在线体验地址
 
-用户要求安装 `image-to-ppt-replica` 技能，并将其提交到本仓库的 `skills/` 目录下统一版本化管理。技能来源为用户提供的压缩包，包含根入口 `SKILL.md` 与 `scripts/analyze_image.py`（基于 Pillow 的本地图片勘测脚本，用于网格定位、切条带放大、局部裁切和像素取色），不含安装脚本、网络请求或凭证读写逻辑。
-
-安装沿用项目既有约定：主副本置于 `skills/image-to-ppt-replica/`，并同步到通用 Agent 发现目录 `.agents/skills/image-to-ppt-replica/`，另补齐 `agents/openai.yaml` 以保持与其余技能一致的 `interface` / `policy` 声明。技能正文未作改写，仍以 `.pptd`（kimi-slides 中间格式）为产出物，依赖 `kimi-slides` 命令行；本次仅做版本化归档，未执行技能流程、未安装外部依赖，也未改写由上游安装器维护的 `skills-lock.json`。安装记录与适用边界见 [`docs/skills/image-to-ppt-replica.md`](docs/skills/image-to-ppt-replica.md)。
+根据用户要求，在 README 顶部增加当前已部署的在线体验地址 `https://xiaohongops-wknhjdyu.manus.space`，并补充正常登录流程及人工发布边界说明。该变更仅更新项目文档，不改变产品功能、数据模型或账号操作权限。
 
 ## 2026-08-28 — 长期任务图修订：从开发交付转为已登录验收与质量完善
 
